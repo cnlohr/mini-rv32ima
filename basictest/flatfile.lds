@@ -5,14 +5,25 @@ SECTIONS
 
 	.header : ALIGN( 16 )
 	{
-		LONG( __TEXT_BEGIN__ )
-		LONG( __BSS_END__ - __TEXT_BEGIN__ )
-		LONG( ( __TEXT_END__ - __TEXT_BEGIN__ ) )
-		LONG( ( __DATA_END__ - __DATA_BEGIN__ ) )
-		LONG( ( __BSS_END__ - __BSS_BEGIN__ ) )
+		/* Registers */
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+
+		/* CPU State */
+		LONG( _start ) /* PC */
+		LONG( 0 )
+		LONG( 0 )
+		LONG( 0 )
+
+
 	}
 
-	. = 0x100;
 	.text : ALIGN(16) {
 		__TEXT_BEGIN__ = .;
 		*(.initial_jump)
@@ -51,4 +62,10 @@ SECTIONS
 		*(.bss.*)
 		__BSS_END__ = .;
 	}
+	PROVIDE( videodata = 0xb0000 );
+	PROVIDE( uarthead = 0xfb000 );
+	PROVIDE( uarttail = 0xfb004 );
+	PROVIDE( uartbuffer = 0xfb100 );
 }
+
+

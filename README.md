@@ -1,5 +1,8 @@
 # riscv_emufun
 
+## Processor type
+
+rv32ima/su+Zifencei+Zicsr
 
 
 ## Prereq
