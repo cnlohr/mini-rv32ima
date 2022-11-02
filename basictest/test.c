@@ -1,3 +1,4 @@
+#include <stdint.h>
 
 extern unsigned int videodata[320*240];
 extern unsigned int uartbuffer[256];

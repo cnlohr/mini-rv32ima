@@ -3,7 +3,7 @@ TARGETS:=test.elf test.bin test.debug.txt
 all : $(TARGETS)
 
 
-CFLAGS:=-g -O1 -march=rv32ima -mabi=ilp32
+CFLAGS:=-g -O1 -march=rv32imaf -mabi=ilp32f -I/usr/include
 LDFLAGS:= -T flatfile.lds -nostdlib
 
 test.elf : test.c
