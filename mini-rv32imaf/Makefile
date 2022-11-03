@@ -1,8 +1,8 @@
-all : mini-rv32ima
+all : mini-rv32imaf
 
-mini-rv32ima : mini-rv32ima.c
-	gcc -o $@ $^
+mini-rv32imaf : mini-rv32imaf.c
+	gcc -o $@ $^ -lm
 
 clean :
-	rm -rf mini-rv32ima
+	rm -rf mini-rv32imaf
 

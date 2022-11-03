@@ -1,7 +1,7 @@
 #include <stdint.h>
 
 extern unsigned int videodata[320*240];
-extern unsigned int uartbuffer[256];
+extern unsigned char uartbuffer[256];
 extern unsigned char uarthead;
 extern unsigned char uarttail;
 
@@ -9,6 +9,7 @@ void putuart( char c )
 {
 	if( ((unsigned char)(uarthead+1)) == uarttail ) return;
 	uartbuffer[uarthead] = c;
+	uarthead++;
 }
 
 void print( const char * str )
@@ -24,9 +25,7 @@ void PlotPixel( int x, int y, unsigned int color )
 
 int main()
 {
-	int * i = (int*)32;
-	*i = 75;
-
+#if 0
 	int x, y;
 	for( y = 0; y < 30; y++ )
 	{
@@ -35,12 +34,16 @@ int main()
 			PlotPixel( x + 30, y + 30, 0xff00ffff );
 		}
 	}
-
-	print("Ok Done\n");
+#endif
+	float f = 3.2f + videodata[1024];
+	f*=10.0f;
+	if( f > 31 && f < 33 ) print( "OKCHECK\n" );
+	print("Hello world from RV32 land.\n");
 }
 
 
 int _start()
 {
 	main();
+	asm volatile( "EBREAK" );
 }

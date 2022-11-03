@@ -1,4 +1,8 @@
+__heap_size = 0x200;
+__stack_size = 0x800;
+
 ENTRY(_start)
+
 SECTIONS
 {
 	. = 0x00;
@@ -6,7 +10,10 @@ SECTIONS
 	.header : ALIGN( 16 )
 	{
 		/* Registers */
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) /* Zero */
+		LONG( 0 ) /* Return Address */
+		LONG( _sstack ) /* Stack Pointer */
+		LONG( 0 )
 		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
 		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
 		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
@@ -62,6 +69,19 @@ SECTIONS
 		*(.bss.*)
 		__BSS_END__ = .;
 	}
+
+	.heap : ALIGN( 16 ) {
+		_sheap = .;
+		. = . + __heap_size;
+		_eheap = .;
+	}
+
+	.stack : ALIGN( 16 ) {
+		_estack = .;
+		. = . + __stack_size;
+		_sstack = .;
+	}
+
 	PROVIDE( videodata = 0xb0000 );
 	PROVIDE( uarthead = 0xfb000 );
 	PROVIDE( uarttail = 0xfb004 );
