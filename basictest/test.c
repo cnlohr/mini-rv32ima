@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include <stdio.h>
+#include <stdarg.h>
 
 extern unsigned int videodata[320*240];
 extern unsigned char uartbuffer[256];
@@ -35,9 +37,14 @@ int main()
 		}
 	}
 #endif
-	float f = 3.2f + videodata[1024];
-	f*=10.0f;
-	if( f > 31 && f < 33 ) print( "OKCHECK\n" );
+//	float f = 3.2f + videodata[1024];
+	//f*=10.0f;
+	//if( f > 31 && f < 33 ) print( "OKCHECK\n" );
+	//tprintf( "TPrintf\n" );
+	//tprintf( "ff: %f\n", f );
+	char st[1024];
+	sprintf( st, "Hello from Printf\n" );
+	print( st );
 	print("Hello world from RV32 land.\n");
 }
 

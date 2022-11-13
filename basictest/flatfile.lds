@@ -3,6 +3,13 @@ __stack_size = 0x800;
 
 ENTRY(_start)
 
+
+PHDRS
+{
+    headers PT_PHDR FILEHDR PHDRS;
+    code PT_LOAD FILEHDR;
+}
+
 SECTIONS
 {
 	. = 0x00;
@@ -27,8 +34,6 @@ SECTIONS
 		LONG( 0 )
 		LONG( 0 )
 		LONG( 0 )
-
-
 	}
 
 	.text : ALIGN(16) {
@@ -41,7 +46,7 @@ SECTIONS
 		*(.out_jump.literal.*)
 		*(.out_jump.*)
 		__TEXT_END__ = .;
-	}
+	} :code
 
 	.data : ALIGN(16) {
 		__DATA_BEGIN__ = .;

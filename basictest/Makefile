@@ -2,19 +2,24 @@ TARGETS:=test.elf test.bin test.debug.txt
 
 all : $(TARGETS)
 
+#PREFIX:=riscv64-unknown-elf-
+#CFLAGS:=-I/usr/include
 
-CFLAGS:=-g -O1 -march=rv32imaf -mabi=ilp32f -I/usr/include
+PREFIX:=../buildroot-2022.02.6/output/host/bin/riscv32-buildroot-linux-gnu-
+CFLAGS:=-fno-stack-protector
+
+CFLAGS+=-g -O1 -march=rv32imaf -mabi=ilp32f 
 LDFLAGS:= -T flatfile.lds -nostdlib
 
 test.elf : test.c
-	riscv64-unknown-elf-gcc -o $@ $^ $(CFLAGS) $(LDFLAGS)
+	$(PREFIX)gcc -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
 test.debug.txt : test.elf
-	riscv64-unknown-elf-objdump -t $^ > $@
-	riscv64-unknown-elf-objdump -S $^ >> $@
+	$(PREFIX)objdump -t $^ > $@
+	$(PREFIX)objdump -S $^ >> $@
 
 test.bin : test.elf
-	riscv64-unknown-elf-objcopy test.elf -O binary test.bin
+	$(PREFIX)objcopy test.elf -O binary test.bin
 
 postlist : 
 	

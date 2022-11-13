@@ -285,13 +285,14 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 		}
 		case 0b0101111: // RV32A
 		{
-			switch( ir>>27 )
+			retval = -100; //Not yet supported.
+/*			switch( ir>>27 )
 			{
 				case 0b00010:
 				default:
 				retval = -9;
 				//XXX TODO
-			}
+			}*/
 			break;
 		}
 
@@ -341,7 +342,7 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 		}
 		
 		case 0b1010011: // All other FP ops.
-		{
+		{	
 			// XXX TODO: Need to test.
 			float rs1 = *((float*)&regs[(ir >> 15) & 0x1f]);
 			uint32_t rs2id = (ir >> 20) & 0x1f;
