@@ -55,6 +55,9 @@ int main( int argc, char ** argv )
 				i++;
 				image_file_name = (i<argc)?argv[i]:0;
 				break;
+			default:
+				show_help = 1;
+				break;
 			}
 		}
 		else
