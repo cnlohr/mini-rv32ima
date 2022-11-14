@@ -2,7 +2,10 @@
 
 ## Processor type
 
-rv32ima/su+Zifencei+Zicsr
+rv32ima/??su+Zifencei+Zicsr
+
+TODO:
+ * Actually make OpenSBI work, it's what buildroot uses to load the Kernel.
 
 
 ## Prereq
