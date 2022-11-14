@@ -12,7 +12,19 @@ For bare metal:
 sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
 ```
 
-For more:
+## Buildroot Notes
+
+Neat tools:
+
+In root:
+`make toolchain`
+
+From `buildroot-2022.02.6`:
+`make linux-menuconfig`
+`make menuconfig`
+
+
+
 
 
 ## Building Tests
@@ -34,4 +46,10 @@ export CROSS_COMPILE=riscv64-unknown-elf-
 export PLATFORM_RISCV_XLEN=32
 make
 ```
+
+## Resources
+
+ * https://jborza.com/emulation/2020/04/09/riscv-environment.html
+ * https://blog.pimaker.at/texts/rvc1/
+
 

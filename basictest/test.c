@@ -7,6 +7,9 @@ extern unsigned char uartbuffer[256];
 extern unsigned char uarthead;
 extern unsigned char uarttail;
 
+void _Unwind_Resume() { }
+void __gcc_personality_v0() { }
+
 void putuart( char c )
 {
 	if( ((unsigned char)(uarthead+1)) == uarttail ) return;
@@ -14,10 +17,10 @@ void putuart( char c )
 	uarthead++;
 }
 
-void print( const char * str )
+void lprint( const char * s )
 {
 	char c;
-	while( c = *(str++) ) putuart( c );
+	while( c = *(s++) ) putuart( c );
 }
 
 void PlotPixel( int x, int y, unsigned int color )
@@ -37,15 +40,7 @@ int main()
 		}
 	}
 #endif
-//	float f = 3.2f + videodata[1024];
-	//f*=10.0f;
-	//if( f > 31 && f < 33 ) print( "OKCHECK\n" );
-	//tprintf( "TPrintf\n" );
-	//tprintf( "ff: %f\n", f );
-	char st[1024];
-	sprintf( st, "Hello from Printf\n" );
-	print( st );
-	print("Hello world from RV32 land.\n");
+	lprint("Hello world from RV32 land.\n");
 }
 
 

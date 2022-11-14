@@ -1,14 +1,7 @@
-__heap_size = 0x200;
-__stack_size = 0x800;
+__heap_size = 0x1000;
+__stack_size = 0x1000;
 
 ENTRY(_start)
-
-
-PHDRS
-{
-    headers PT_PHDR FILEHDR PHDRS;
-    code PT_LOAD FILEHDR;
-}
 
 SECTIONS
 {
@@ -42,11 +35,21 @@ SECTIONS
 		*(.entry.text)
 		*(.init.literal)
 		*(.init)
+		*(.text)
 		*(.literal .text .literal.* .text.* .stub)
 		*(.out_jump.literal.*)
 		*(.out_jump.*)
 		__TEXT_END__ = .;
-	} :code
+	}
+
+	/* If we're on a newer compiler */
+	/DISCARD/ :
+	{
+		*(.interp)
+		*(.dynsym)
+		*(.dynstr)
+		*(.header)
+	} : phdr
 
 	.data : ALIGN(16) {
 		__DATA_BEGIN__ = .;
@@ -55,16 +58,18 @@ SECTIONS
 		*(.gnu.linkonce.r.*)
 		*(.rodata1)
 		*(.dynsbss)
-		*(.sbss)
-		*(.sbss.*)
 		*(.gnu.linkonce.sb.*)
 		*(.scommon)
+		*(.gnu.linkonce.sb2.*)
+		*(.sbss)
+		*(.sbss.*)
 		*(.sbss2)
 		*(.sbss2.*)
-		*(.gnu.linkonce.sb2.*)
 		*(.dynbss)
 		*(.data)
 		*(.data.*)
+		*(.got)
+		*(.got.*)
 		__DATA_END__ = .;
 	}
 
