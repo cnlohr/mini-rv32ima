@@ -3,6 +3,7 @@ all :
 toolchain : buildroot-2022.02.6
 	cp buildroot-2022.02.6-config buildroot-2022.02.6/.config
 	cp -a custom_kernel_config buildroot-2022.02.6/kernel_config
+	cp riscv_Kconfig buildroot-2022.02.6/output/build/linux-5.15.67/arch/riscv/
 	make -C buildroot-2022.02.6
 
 opensbi_firmware : 

@@ -29,6 +29,7 @@ From `buildroot-2022.02.6`:
 
 ## Building Tests
 
+(This does not work, now)
 ```
 cd riscv-tests
 export CROSS_COMPILE=riscv64-linux-gnu-
