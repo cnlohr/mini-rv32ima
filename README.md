@@ -1,8 +1,12 @@
 # riscv_emufun
 
+## VERY EARLY ROUGH DO NOT USE
+
 ## Processor type
 
-rv32ima/??su+Zifencei+Zicsr
+Probably/maybe something like: rv32ima/??su+Zifencei+Zicsr
+
+Right now I am just using an rv32im.  But wouldn't it be cool if we could get buildroot running on that?
 
 TODO:
  * Actually make OpenSBI work, it's what buildroot uses to load the Kernel.
