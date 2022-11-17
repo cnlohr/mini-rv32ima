@@ -24,7 +24,20 @@ SECTIONS
 
 		/* CPU State */
 		LONG( _start ) /* PC */
-		LONG( 0 )
+
+		/* CSRs */
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 )
+
+		/* Reserved */
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
+		LONG( 0 ) LONG( 0 )
+
+		/* UART 8250 */
 		LONG( 0 )
 		LONG( 0 )
 	}
@@ -93,9 +106,7 @@ SECTIONS
 	}
 
 	PROVIDE( videodata = 0xb0000 );
-	PROVIDE( uarthead = 0xfb000 );
-	PROVIDE( uarttail = 0xfb004 );
-	PROVIDE( uartbuffer = 0xfb100 );
+	PROVIDE( uart8250 = 152 );
 }
 
 

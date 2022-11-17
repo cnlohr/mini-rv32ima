@@ -26,6 +26,11 @@ From `buildroot-2022.02.6`:
 `make linux-menuconfig`
 `make menuconfig`
 
+## QEMU Test
+
+```
+sudo apt install qemu-system-misc
+```
 
 
 

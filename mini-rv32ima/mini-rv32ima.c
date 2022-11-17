@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
-//#define DEBUG_INSTRUCTIONS
+#define DEBUG_INSTRUCTIONS
 #ifdef DEBUG_INSTRUCTIONS
 #define INST_DBG( x... ) printf( x );
 #else
@@ -25,13 +26,16 @@ struct InternalCPUState
 {
 	uint32_t registers[32];
 	uint32_t pc;
-	uint32_t reserved[3];
+	uint32_t CSRs[7]; // instret, cycle, time, csr, fcsr, frm, fflags
+	uint32_t reserved[22];
+	uint8_t uart8250[8]; //@248
 };
 
 int main( int argc, char ** argv )
 {
 	int i;
 	int instct = -1;
+	int image_load_at_executable = 0;
 	int show_help = 0;
 	const char * image_file_name = 0;
 	for( i = 1; i < argc; i++ )
@@ -55,6 +59,11 @@ int main( int argc, char ** argv )
 				i++;
 				image_file_name = (i<argc)?argv[i]:0;
 				break;
+			case 'i':
+				i++;
+				image_file_name = (i<argc)?argv[i]:0;
+				image_load_at_executable = 1;
+				break;
 			default:
 				show_help = 1;
 				break;
@@ -67,7 +76,7 @@ int main( int argc, char ** argv )
 	}
 	if( show_help || image_file_name == 0 )
 	{
-		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-f [image]\n\t-c instruction count\n" );
+		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-f [running image]\n\t-i [executable image]\n\t-c instruction count\n" );
 		return 1;
 	}
 
@@ -88,7 +97,16 @@ int main( int argc, char ** argv )
 		}
 
 		ram_image = malloc( ram_amt );
-		if( fread( ram_image, flen, 1, f ) != 1)
+		memset( ram_image, 0, ram_amt );
+		int offset = 0;
+		if( image_load_at_executable )
+		{
+			offset = 40*4;
+			struct InternalCPUState * state = (void*)((ram_image));
+			state->pc = sizeof(struct InternalCPUState);
+		}
+
+		if( fread( ram_image + sizeof(struct InternalCPUState), flen, 1, f ) != 1)
 		{
 			fprintf( stderr, "Error: Could not load image.\n" );
 			return -7;
@@ -96,13 +114,21 @@ int main( int argc, char ** argv )
 		fclose( f );
 	}
 
+
+
 	// Image is loaded.
 	int rt;
 	for( rt = 0; rt < instct || instct < 0; rt++ )
 	{
 		int ret = StepInstruction( ram_image, 0 );
-		if( ret ) break;
-		HandleUART( ram_image );
+		if( ret == 2 )
+		{
+			HandleUART( ram_image );
+		}
+		else if( ret != 0 )
+		{
+			break;
+		}
 	}
 }
 
@@ -317,20 +343,67 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 		}
 		case 0b1110011:
 		{
-			// ECALL/EBREAK
-			retval = 1;
+			uint32_t rdid = (ir >> 7) & 0x1f;
+			int rs1imm = (ir >> 15) & 0x1f;
+			uint32_t rs1 = regs[rs1imm];
+			uint32_t csrno = ir >> 20;
+
+			uint32_t readval = state->CSRs[csrno];
+
+			switch( ( ir >> 12 ) & 0b111 )
+			{
+			case 0b000: //ECALL/EBREAK/WFI
+				if( csrno == 0x105 )
+					;// WFI, Ignore.
+				else
+					retval = 1;
+				break;
+			case 0b010: state->CSRs[csrno] = rs1; break;     //CSRRW
+			case 0b011: state->CSRs[csrno] |= rs1; break;    //CSRRS
+			case 0b001: state->CSRs[csrno] &= ~rs1; break;   //CSRRC
+			case 0b110: state->CSRs[csrno] = rs1imm; break;  //CSRRWI
+			case 0b111: state->CSRs[csrno] |= rs1imm; break; //CSRRSI
+			case 0b101: state->CSRs[csrno] &= ~rs1; break;   //CSRRCI
+			default:
+				retval = -98; // Invalid opcode 0b100
+			}
+
+			if( rdid ) regs[rdid] = readval;
 			break;
 		}
 		case 0b0101111: // RV32A
 		{
-			retval = -100; //Not yet supported.
-/*			switch( ir>>27 )
+			uint32_t rdid = (ir >> 7) & 0x1f;
+			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
+			uint32_t rs2 = regs[(ir >> 20) & 0x1f];
+			uint32_t readval = 0;
+			if( rs1 < sizeof(struct InternalCPUState) || rs1 >= ram_amt-3 )
 			{
-				case 0b00010:
-				default:
-				retval = -9;
-				//XXX TODO
-			}*/
+				retval = -99;
+				printf( "Store OOB Access [%08x]\n", rs2 );
+			}
+
+			readval = *((uint32_t*)(image + rs1));
+			int dowrite = 1;
+			switch( ir>>27 )
+			{
+				case 0b00010: dowrite = 0; break; //LR.W
+				case 0b00011: rdid = 0; break;    //SC.W
+				case 0b00001: break; //AMOSWAP.W
+				case 0b00000: rs2 += readval; break; //AMOADD.W
+				case 0b00100: rs2 ^= readval; break; //AMOXOR.W
+				case 0b01100: rs2 &= readval; break; //AMOAND.W
+				case 0b01000: rs2 |= readval; break; //AMOOR.W
+				case 0b10000: rs2 = ((int)rs2<(int)readval)?rs2:readval; break; //AMOMIN.W
+				case 0b10100: rs2 = ((int)rs2>(int)readval)?rs2:readval; break; //AMOMAX.W
+				case 0b11000: rs2 = (rs2<readval)?rs2:readval; break; //AMOMINU.W
+				case 0b11100: rs2 = (rs2>readval)?rs2:readval; break; //AMOMAXU.W
+				default: retval = -100; dowrite = 0; rdid = 0; break; //Not supported.
+			}
+			if( dowrite )
+				*((uint32_t*)(image + rs1)) = rs2;
+			if( rdid )
+				regs[rdid] = readval;
 			break;
 		}
 
@@ -348,6 +421,9 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
 			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15] );
 	}
+
+	// Increment both wall-clock and instruction count time.
+	state->CSRs[1] = ++state->CSRs[2];
 	
 	if( retval < 0 )
 	{
@@ -388,6 +464,7 @@ void HandleUART( uint8_t * image )
 	//PROVIDE( uarthead = 0xfb000 );
 	//PROVIDE( uarttail = 0xfb004 );
 	//PROVIDE( uartbuffer = 0xfb100 );
+/*
 	if( image[0xfb000] == image[0xfb004] ) return;
 	while( image[0xfb000] != image[0xfb004] )
 	{
@@ -395,5 +472,13 @@ void HandleUART( uint8_t * image )
 		image[0xfb004]++;
 	}
 	fflush(stdout);
+*/
+	struct InternalCPUState * state = (struct InternalCPUState*)image;
+	if( !(state->uart8250[5] & 0x20) )
+	{
+		printf( "%c", state->uart8250[0] );
+		fflush(stdout);
+	}
+	state->uart8250[5] |= 0x20;
 }
 
