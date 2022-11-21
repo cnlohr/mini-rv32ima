@@ -18,7 +18,7 @@
 #include <sbi_utils/serial/uart8250.h>
 #include <sbi_utils/timer/aclint_mtimer.h>
 
-#define EMUFUN_DEFAULT_UART_ADDR		248
+#define EMUFUN_DEFAULT_UART_ADDR		0x10000000
 #define EMUFUN_DEFAULT_UART_FREQ		1000000
 #define EMUFUN_DEFAULT_UART_BAUDRATE    115200
 #define EMUFUN_DEFAULT_UART_REG_SHIFT	0
@@ -26,17 +26,13 @@
 #define EMUFUN_DEFAULT_UART_REG_OFFSET	0
 #define EMUFUN_DEFAULT_HART_COUNT       1
 
-static const struct platform_uart_data uart = {
-	EMUFUN_DEFAULT_UART_ADDR,
-	EMUFUN_DEFAULT_UART_FREQ,
-	EMUFUN_DEFAULT_UART_BAUDRATE,
-};
-
 /*
  * emufun platform early initialization.
  */
 static int emufun_early_init(bool cold_boot)
 {
+	int * k = (int*)0xffffffff;
+	*k = 0xaaaaaaaa;
 	return 0;
 }
 
@@ -54,9 +50,7 @@ static int emufun_final_init(bool cold_boot)
  */
 static int emufun_console_init(void)
 {
-	return uart8250_init(uart.addr, uart.freq,
-			     uart.baud, 0, 1, 0);
-
+	return uart8250_init( EMUFUN_DEFAULT_UART_ADDR, EMUFUN_DEFAULT_UART_FREQ, EMUFUN_DEFAULT_UART_BAUDRATE, 0, 1, 0);
 }
 
 /*

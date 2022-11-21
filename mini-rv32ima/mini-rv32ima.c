@@ -14,28 +14,37 @@
 
 uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber );
 
-uint64_t ram_amt = 16*1024*1024;
+uint32_t ram_amt = 16*1024*1024;
+uint32_t ram_image_offset = 0x80000000;
 
 //Tricky: First 32 + 4 words are internal CPU state.
 uint8_t * ram_image = 0;
-
-int StepInstruction( uint8_t * image, uint32_t vProcAddress );
-void HandleUART( uint8_t * image );
 
 struct InternalCPUState
 {
 	uint32_t registers[32];
 	uint32_t pc;
-	uint32_t CSRs[7]; // instret, cycle, time, csr, fcsr, frm, fflags
+	uint32_t mscratch;
+	uint32_t mtvec;
+	uint32_t mie;
+	uint32_t cycle;
+	uint32_t mip;
+	uint32_t mstatus;
+	uint32_t reserved2[1];
 	uint32_t reserved[22];
 	uint8_t uart8250[8]; //@248
 };
 
+
+int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress );
+void HandleUART(  struct InternalCPUState * state, uint8_t * image );
+
+
 int main( int argc, char ** argv )
 {
+	struct InternalCPUState core = { 0 };
 	int i;
 	int instct = -1;
-	int image_load_at_executable = 0;
 	int show_help = 0;
 	const char * image_file_name = 0;
 	for( i = 1; i < argc; i++ )
@@ -58,11 +67,6 @@ int main( int argc, char ** argv )
 			case 'f':
 				i++;
 				image_file_name = (i<argc)?argv[i]:0;
-				break;
-			case 'i':
-				i++;
-				image_file_name = (i<argc)?argv[i]:0;
-				image_load_at_executable = 1;
 				break;
 			default:
 				show_help = 1;
@@ -92,21 +96,13 @@ int main( int argc, char ** argv )
 		fseek( f, 0, SEEK_SET );
 		if( flen > ram_amt )
 		{
-			fprintf( stderr, "Error: Could not fit RAM image (%ld bytes) into %ld\n", flen, ram_amt );
+			fprintf( stderr, "Error: Could not fit RAM image (%ld bytes) into %d\n", flen, ram_amt );
 			return -6;
 		}
 
 		ram_image = malloc( ram_amt );
 		memset( ram_image, 0, ram_amt );
-		int offset = 0;
-		if( image_load_at_executable )
-		{
-			offset = 40*4;
-			struct InternalCPUState * state = (void*)((ram_image));
-			state->pc = sizeof(struct InternalCPUState);
-		}
-
-		if( fread( ram_image + sizeof(struct InternalCPUState), flen, 1, f ) != 1)
+		if( fread( ram_image, flen, 1, f ) != 1)
 		{
 			fprintf( stderr, "Error: Could not load image.\n" );
 			return -7;
@@ -114,16 +110,16 @@ int main( int argc, char ** argv )
 		fclose( f );
 	}
 
-
+	core.pc = ram_image_offset;
 
 	// Image is loaded.
 	int rt;
 	for( rt = 0; rt < instct || instct < 0; rt++ )
 	{
-		int ret = StepInstruction( ram_image, 0 );
+		int ret = StepInstruction( &core, ram_image, 0 );
 		if( ret == 2 )
 		{
-			HandleUART( ram_image );
+			HandleUART( &core, ram_image );
 		}
 		else if( ret != 0 )
 		{
@@ -132,21 +128,70 @@ int main( int argc, char ** argv )
 	}
 }
 
-int StepInstruction( uint8_t * image, uint32_t vProcAddress )
+// https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
+// Generally, support for Zicsr
+int ReadCSR( struct InternalCPUState * state, int csr )
 {
-	struct InternalCPUState * state = (void*)((image) + vProcAddress);
-	// state is this processor's "state".
+	switch( csr )
+	{
+	case 0x340: return state->mscratch; break;
+	case 0x305: return state->mtvec; break;
+	case 0x304: return state->mie; break;
+	case 0xC00: return state->cycle; break;
+	case 0x344: return state->mip; break;
+	case 0x300: return state->mstatus; //mstatus
 
+
+	case 0x3B0: return 0; break; //pmpaddr0
+	case 0x3a0: return 0; break; //pmpcfg0
+	case 0xf11: return 0xff0ff0ff; break; //mvendorid
+	case 0xf12: return 0x00000000; break; //marchid
+	case 0xf13: return 0x00000000; break; //mimpid
+	case 0xf14: return 0x00000000; break; //mhartid
+	case 0x301: return 0x40001101; break; //misa (XLEN=32, IMA) TODO: Consider setting X bit.
+	default:
+		printf( "READ CSR: %08x\n", csr );
+		return 0;
+	}
+}
+
+void WriteCSR( struct InternalCPUState * state, int csr, int value )
+{
+	printf( "%04x = %08x\n", csr, value );
+	switch( csr )
+	{
+	case 0x340: state->mscratch = value; break;
+	case 0x305: state->mtvec = value; break;
+	case 0x304: state->mie = value; break;
+	case 0x344: state->mip = value; break;
+	case 0x300: state->mstatus = value; break; //mstatus
+	case 0x3a0: break; //pmpcfg0
+	case 0x3B0: break; //pmpaddr0
+	case 0xf11: break; //mvendorid
+	case 0xf12: break; //marchid
+	case 0xf13: break; //mimpid
+	case 0xf14: break; //mhartid
+	case 0x301: break; //misa
+
+	default:
+		printf( "WRITE CSR: %08x = %08x\n", csr, value );
+	}
+}
+
+
+int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress )
+{
 	uint32_t pc = state->pc;
 	uint32_t * regs = state->registers;
 
-	if( pc & 3 || pc >= ram_amt )
+	uint32_t ofs_pc = pc - ram_image_offset;
+	if( ofs_pc & 3 || ofs_pc >= ram_amt )
 	{
 		fprintf( stderr, "Error: CPU PC invalid: %08x\n", state->pc );
 		return -1;
 	}
 
-	uint32_t ir = *(uint32_t*)(ram_image + pc);
+	uint32_t ir = *(uint32_t*)(ram_image + ofs_pc);
 	INST_DBG( "PC: %08x / IR: %08x (OPC: %02x)\n", pc, ir, ir & 0x7f );
 	int retval = 0;
 
@@ -169,8 +214,10 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 		case 0b1101111: // JAL
 		{
 			uint32_t rdid = (ir >> 7) & 0x1f;
-			int32_t reladdy = (((ir>>21)&0x3ff)<<1) | (((ir>>20)&1)<<11) | (ir&0xff000) | ((ir&0x80000000)>>11);
-			if( reladdy & 0x00080000 ) reladdy |= 0xfff00000; // Sign extension.
+			//int32_t reladdy = (((ir>>21)&0x3ff)<<1) | (((ir>>20)&1)<<11) | (ir&0xff000) | ((ir&0x80000000)>>11);
+			int32_t reladdy = ((ir & 0x80000000)>>11) | ((ir & 0x7fe00000)>>20) | ((ir & 0x00100000)>>9) | ((ir&0x000ff000));
+			INST_DBG( "JAL PREADDR: %08x\n", reladdy );
+			if( reladdy & 0x00100000 ) reladdy |= 0xffe00000; // Sign extension.
 			if( rdid ) regs[ rdid ] = pc + 4;
 			INST_DBG( "JAL PC:%08x = %08x + %08x - 4\n",  pc + reladdy - 4, pc, reladdy );
 			pc = pc + reladdy - 4;
@@ -217,11 +264,12 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 			int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
 			uint32_t rsval = rs1 + imm_se;
 			uint32_t loaded = 0;
-			INST_DBG( "LOADING RSVAL: %08x\n", rsval );
-			if( rsval < sizeof(struct InternalCPUState) || rsval >= ram_amt-3 )
+			INST_DBG( "LOADING RSVAL: %08x (%08x + %08x)\n", rsval, rs1, imm_se );
+			rsval -= ram_image_offset;
+			if( rsval >= ram_amt-3 )
 			{
 				retval = -99;
-				printf( "Load OOB Access [%08x]\n", rsval );
+				printf( "Load OOB Access [%08x] (%08x + %08x)\n", rsval, rs1, imm_se );
 			}
 			else
 			{
@@ -236,7 +284,7 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 					default: retval = -1;
 				}
 				if( rdid ) regs[rdid] = loaded;
-				INST_DBG( "LOAD [%d] = %08x\n", rdid, regs[rdid]);
+				INST_DBG( "LOAD [%d, %08x] = %08x  [%x]\n", rdid,rsval, regs[rdid], ( ir >> 12 ) & 0x7);
 			}
 			break;
 		}
@@ -244,10 +292,12 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 		{
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
 			uint32_t rs2 = regs[(ir >> 20) & 0x1f];
-			uint32_t addy = ( ( ir >> 7 ) & 0x1f ) | ( ( ir >> 25 ) >> 20 );
+			uint32_t addy = ( ( ir >> 7 ) & 0x1f ) | ( ( ir & 0xfe000000 ) >> 20 );
+			INST_DBG( "STORE ADDY: %08x + %08x; ", addy, rs1 );
 			if( addy & 0x800 ) addy |= 0xfffff000;
-			addy += rs1;
-			if( addy < sizeof(struct InternalCPUState) || addy >= ram_amt-3 )
+			INST_DBG( "%08x\n", addy );
+			addy += rs1 - ram_image_offset;
+			if( addy >= ram_amt-3 )
 			{
 				retval = -99;
 				printf( "Store OOB Access [%08x]\n", addy );
@@ -262,7 +312,7 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 					case 0b010: *((uint32_t*)(image + addy)) = rs2; break;
 					default: retval = -1;
 				}
-				INST_DBG( "STORE [%08x] = %08x\n", addy, rs2 );
+				INST_DBG( "STORE [%08x] = %08x [%x]\n", addy, rs2, ( ir >> 12 ) & 0x7 );
 			}
 			break;
 		}
@@ -341,16 +391,23 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 			retval = 2;
 			break;
 		}
-		case 0b1110011:
+		case 0b1110011:  // Zifencei+Zicsr
 		{
 			uint32_t rdid = (ir >> 7) & 0x1f;
 			int rs1imm = (ir >> 15) & 0x1f;
 			uint32_t rs1 = regs[rs1imm];
 			uint32_t csrno = ir >> 20;
 
-			uint32_t readval = state->CSRs[csrno];
+			int microop = ( ir >> 12 ) & 0b111;
+			uint32_t writeval = rs1;
+			int do_write = !!(microop & 3);
+			uint32_t readval = 0;
+			if( ( (microop & 3) == 1 ) || ( (microop & 3) == 3 ) )
+			{
+				readval = ReadCSR( state, csrno );
+			}
 
-			switch( ( ir >> 12 ) & 0b111 )
+			switch( microop )
 			{
 			case 0b000: //ECALL/EBREAK/WFI
 				if( csrno == 0x105 )
@@ -358,16 +415,18 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 				else
 					retval = 1;
 				break;
-			case 0b010: state->CSRs[csrno] = rs1; break;     //CSRRW
-			case 0b011: state->CSRs[csrno] |= rs1; break;    //CSRRS
-			case 0b001: state->CSRs[csrno] &= ~rs1; break;   //CSRRC
-			case 0b110: state->CSRs[csrno] = rs1imm; break;  //CSRRWI
-			case 0b111: state->CSRs[csrno] |= rs1imm; break; //CSRRSI
-			case 0b101: state->CSRs[csrno] &= ~rs1; break;   //CSRRCI
-			default:
-				retval = -98; // Invalid opcode 0b100
+			case 0b001: writeval = rs1; break;  				//CSRRW
+			case 0b010: writeval = readval | rs1; break;		//CSRRS
+			case 0b011: writeval = readval & ~rs1; break;		//CSRRC
+			case 0b100: retval = -98;  break; // Unused
+			case 0b101: writeval = rs1imm; break;				//CSRRWI
+			case 0b110: writeval = readval & rs1imm; break;		//CSRRSI
+			case 0b111: writeval = readval & ~rs1imm; break;	//CSRRCI
 			}
 
+			printf( "Zifencei+Zicsr %08x [%08x] ==> %d; %04x (Read: %08x; Write: %08x / %08x %08x)\n", pc, ir, microop, csrno, readval, writeval, rs1, rs1imm ); 
+
+			if( do_write) WriteCSR( state, csrno, writeval );
 			if( rdid ) regs[rdid] = readval;
 			break;
 		}
@@ -377,15 +436,24 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
 			uint32_t rs2 = regs[(ir >> 20) & 0x1f];
 			uint32_t readval = 0;
-			if( rs1 < sizeof(struct InternalCPUState) || rs1 >= ram_amt-3 )
-			{
-				retval = -99;
-				printf( "Store OOB Access [%08x]\n", rs2 );
-			}
+			uint32_t irmid = ( ir>>27 ) & 0x1f;
 
-			readval = *((uint32_t*)(image + rs1));
+			rs1 -= ram_image_offset;
+
+			if( irmid != 0b00011 )
+			{
+				if( rs1 >= ram_amt-3 )
+				{
+					retval = -99;
+					printf( "Store OOB Access [%08x]\n", rs2 );
+				}
+
+				readval = *((uint32_t*)(image + rs1));
+			}
+			INST_DBG( "RV32A: %d: %08x ==> %08x\n", irmid, rs1, readval );
+
 			int dowrite = 1;
-			switch( ir>>27 )
+			switch( irmid )
 			{
 				case 0b00010: dowrite = 0; break; //LR.W
 				case 0b00011: rdid = 0; break;    //SC.W
@@ -404,6 +472,7 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 				*((uint32_t*)(image + rs1)) = rs2;
 			if( rdid )
 				regs[rdid] = readval;
+
 			break;
 		}
 
@@ -417,14 +486,15 @@ int StepInstruction( uint8_t * image, uint32_t vProcAddress )
 	if( retval )
 #endif
 	{
-		printf( "%d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
+		printf( "%d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
 			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
-			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15] );
+			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 	}
 
 	// Increment both wall-clock and instruction count time.
-	state->CSRs[1] = ++state->CSRs[2];
-	
+	++state->cycle;
+	if( state->cycle % 1000000  ); else printf( "PC: %08x\n", pc );
 	if( retval < 0 )
 	{
 		fprintf( stderr, "Error PC: %08x / IR: %08x\n", pc, ir );
@@ -459,7 +529,7 @@ uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber )
 	}	
 }
 
-void HandleUART( uint8_t * image )
+void HandleUART( struct InternalCPUState * state, uint8_t * image )
 {
 	//PROVIDE( uarthead = 0xfb000 );
 	//PROVIDE( uarttail = 0xfb004 );
@@ -473,7 +543,6 @@ void HandleUART( uint8_t * image )
 	}
 	fflush(stdout);
 */
-	struct InternalCPUState * state = (struct InternalCPUState*)image;
 	if( !(state->uart8250[5] & 0x20) )
 	{
 		printf( "%c", state->uart8250[0] );
