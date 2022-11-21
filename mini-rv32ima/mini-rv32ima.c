@@ -112,7 +112,7 @@ int main( int argc, char ** argv )
 
 	core.pc = ram_image_offset;
 	core.registers[10] = 0x00; //hart ID
-	core.registers[11] = 0x80000004; //dtb_pa (Must be valid pointer)
+	core.registers[11] = 0x80000010; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
 
 	// Image is loaded.
 	int rt;
