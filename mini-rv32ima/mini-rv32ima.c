@@ -111,6 +111,8 @@ int main( int argc, char ** argv )
 	}
 
 	core.pc = ram_image_offset;
+	core.registers[10] = 0x00; //hart ID
+	core.registers[11] = 0x80000004; //dtb_pa (Must be valid pointer)
 
 	// Image is loaded.
 	int rt;
@@ -250,9 +252,9 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				case 0b000: if( rs1 == rs2 ) pc = immm4; break;
 				case 0b001: if( rs1 != rs2 ) pc = immm4; break;
 				case 0b100: if( rs1 < rs2 ) pc = immm4; break;
-				case 0b101: if( rs1 > rs2 ) pc = immm4; break;
-				case 0b110: if( (uint32_t)rs1 < (uint32_t)rs2 ) pc = immm4; break;
-				case 0b111: if( (uint32_t)rs1 > (uint32_t)rs2 ) pc = immm4; break;
+				case 0b101: if( rs1 >= rs2 ) pc = immm4; break; //BGE
+				case 0b110: if( (uint32_t)rs1 < (uint32_t)rs2 ) pc = immm4; break;   //BLTU
+				case 0b111: if( (uint32_t)rs1 >= (uint32_t)rs2 ) pc = immm4; break;  //BGEU
 				default: retval = -1;
 			}
 			INST_DBG( "BRANCH\n");
@@ -268,7 +270,14 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			uint32_t loaded = 0;
 			INST_DBG( "LOADING RSVAL: %08x (%08x + %08x)\n", rsval, rs1, imm_se );
 			rsval -= ram_image_offset;
-			if( rsval >= ram_amt-3 )
+			if( rsval >= 0x90000000 && rsval < 0x90000008 ) 
+			{
+				//Special: UART.
+				printf( "Read UART: %08x\n", rsval );
+				rsval = (rsval - 0x90000000) - (intptr_t)image + (intptr_t)state->uart8250;
+				state->uart8250[5] |= 0x20;
+			}
+			else if( rsval >= ram_amt-3 )
 			{
 				retval = -99;
 				printf( "Load OOB Access [%08x] (%08x + %08x)\n", rsval, rs1, imm_se );
@@ -299,7 +308,14 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			if( addy & 0x800 ) addy |= 0xfffff000;
 			INST_DBG( "%08x\n", addy );
 			addy += rs1 - ram_image_offset;
-			if( addy >= ram_amt-3 )
+
+			if( addy >= 0x90000000 && addy < 0x90000008 ) 
+			{
+				//Special: UART.
+				printf( "Write UART: %08x -> %08x\n", addy, rs2 );
+				addy = (addy - 0x90000000) - (intptr_t)image + (intptr_t)state->uart8250;
+			}
+			else if( addy >= ram_amt-3 )
 			{
 				retval = -99;
 				printf( "Store OOB Access [%08x]\n", addy );
@@ -417,7 +433,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				if( csrno == 0x105 )
 					;// WFI, Ignore.
 				else
-					retval = 1;
+					printf( "EBREAK EBREAK EBREAK @ %08x\n", pc );//retval = 1;
 				break;
 			case 0b001: writeval = rs1; break;  				//CSRRW
 			case 0b010: writeval = readval | rs1; break;		//CSRRS
@@ -444,38 +460,45 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 
 			rs1 -= ram_image_offset;
 
-			if( irmid != 0b00011 )
+			if( rs1 >= 0x90000000 && rs1 < 0x90000008 ) 
 			{
-				if( rs1 >= ram_amt-3 )
+				//Special: UART.
+				rs1 = (rs1 - 0x90000000) - (intptr_t)image + (intptr_t)state->uart8250;
+			}
+			else if( rs1 >= ram_amt-3 )
+			{
+				retval = -99;
+				printf( "Store OOB Access [%08x]\n", rs2 );
+			}
+			else
+			{
+				if( irmid != 0b00011 )
 				{
-					retval = -99;
-					printf( "Store OOB Access [%08x]\n", rs2 );
+					readval = *((uint32_t*)(image + rs1));
 				}
+				INST_DBG( "RV32A: %d: %08x ==> %08x\n", irmid, rs1, readval );
 
-				readval = *((uint32_t*)(image + rs1));
+				int dowrite = 1;
+				switch( irmid )
+				{
+					case 0b00010: dowrite = 0; break; //LR.W
+					case 0b00011: rdid = 0; break;    //SC.W
+					case 0b00001: break; //AMOSWAP.W
+					case 0b00000: rs2 += readval; break; //AMOADD.W
+					case 0b00100: rs2 ^= readval; break; //AMOXOR.W
+					case 0b01100: rs2 &= readval; break; //AMOAND.W
+					case 0b01000: rs2 |= readval; break; //AMOOR.W
+					case 0b10000: rs2 = ((int)rs2<(int)readval)?rs2:readval; break; //AMOMIN.W
+					case 0b10100: rs2 = ((int)rs2>(int)readval)?rs2:readval; break; //AMOMAX.W
+					case 0b11000: rs2 = (rs2<readval)?rs2:readval; break; //AMOMINU.W
+					case 0b11100: rs2 = (rs2>readval)?rs2:readval; break; //AMOMAXU.W
+					default: retval = -100; dowrite = 0; rdid = 0; break; //Not supported.
+				}
+				if( dowrite )
+					*((uint32_t*)(image + rs1)) = rs2;
+				if( rdid )
+					regs[rdid] = readval;
 			}
-			INST_DBG( "RV32A: %d: %08x ==> %08x\n", irmid, rs1, readval );
-
-			int dowrite = 1;
-			switch( irmid )
-			{
-				case 0b00010: dowrite = 0; break; //LR.W
-				case 0b00011: rdid = 0; break;    //SC.W
-				case 0b00001: break; //AMOSWAP.W
-				case 0b00000: rs2 += readval; break; //AMOADD.W
-				case 0b00100: rs2 ^= readval; break; //AMOXOR.W
-				case 0b01100: rs2 &= readval; break; //AMOAND.W
-				case 0b01000: rs2 |= readval; break; //AMOOR.W
-				case 0b10000: rs2 = ((int)rs2<(int)readval)?rs2:readval; break; //AMOMIN.W
-				case 0b10100: rs2 = ((int)rs2>(int)readval)?rs2:readval; break; //AMOMAX.W
-				case 0b11000: rs2 = (rs2<readval)?rs2:readval; break; //AMOMINU.W
-				case 0b11100: rs2 = (rs2>readval)?rs2:readval; break; //AMOMAXU.W
-				default: retval = -100; dowrite = 0; rdid = 0; break; //Not supported.
-			}
-			if( dowrite )
-				*((uint32_t*)(image + rs1)) = rs2;
-			if( rdid )
-				regs[rdid] = readval;
 
 			break;
 		}

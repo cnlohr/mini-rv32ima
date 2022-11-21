@@ -32,3 +32,6 @@ toolchain : buildroot
 	make -C buildroot qemu_riscv32_nommu_virt_minimal_defconfig
 
 
+tests :
+	git clone https://github.com/riscv-software-src/riscv-tests
+	./configure --prefix=
