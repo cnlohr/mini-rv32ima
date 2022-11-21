@@ -195,6 +195,8 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	INST_DBG( "PC: %08x / IR: %08x (OPC: %02x)\n", pc, ir, ir & 0x7f );
 	int retval = 0;
 
+	if( state->cycle % 9948247); else printf( "PC: %08x / %08x\n", pc, ir );
+
 	switch( ir & 0x7f )
 	{
 		case 0b0110111: // LUI
@@ -319,7 +321,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 		case 0b0010011: // Op-immediate
 		{
 			uint32_t imm = ir >> 20;
-			int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
+			imm = imm | (( imm & 0x800 )?0xfffff000:0);
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
 			uint32_t rs2id = (ir >> 20) & 0x1f;
 			uint32_t rdid = (ir >> 7) & 0x1f;
@@ -327,14 +329,14 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			// ADDI, SLTI, SLTIU, XORI, ORI, ANDI
 			switch( (ir>>12)&7 )
 			{
-				case 0b000: val = rs1 + imm_se; break;
+				case 0b000: val = rs1 + imm; break;
 				case 0b001: val = rs1 << rs2id; break;
-				case 0b010: val = rs1 < imm; break;
-				case 0b011: val = rs1 < imm_se; break;
-				case 0b100: val = rs1 ^ imm_se; break;
+				case 0b010: val = (int)rs1 < (int)imm; break;  //signed (SLTI)
+				case 0b011: val = rs1 < imm; break; //unsigned (SLTIU)
+				case 0b100: val = rs1 ^ imm; break;
 				case 0b101: val = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2id ) : (rs1 >> rs2id); break;
-				case 0b110: val = rs1 | imm_se; break;
-				case 0b111: val = rs1 & imm_se; break;
+				case 0b110: val = rs1 | imm; break;
+				case 0b111: val = rs1 & imm; break;
 				default: retval = -1;
 			}
 			if( rdid )
@@ -375,7 +377,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 						case 0b010: val = (int32_t)rs1 < (int32_t)rs2; break;
 						case 0b011: val = rs1 < rs2; break;
 						case 0b100: val = rs1 ^ rs2; break;
-						case 0b101: val = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2 ) : ( rs1 >> rs2 ); break;
+						case 0b101: val = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2 ) : ( rs1 << rs2 ); break;
 						case 0b110: val = rs1 | rs2; break;
 						case 0b111: val = rs1 & rs2; break;
 					}
@@ -387,7 +389,9 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 		}
 		case 0b0001111:
 		{
+			int fencetype = (ir >> 12) & 0b111;
 			// Fence
+			printf( "FENCE %d\n", fencetype );
 			retval = 2;
 			break;
 		}
@@ -494,7 +498,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 
 	// Increment both wall-clock and instruction count time.
 	++state->cycle;
-	if( state->cycle % 1000000  ); else printf( "PC: %08x\n", pc );
+
 	if( retval < 0 )
 	{
 		fprintf( stderr, "Error PC: %08x / IR: %08x\n", pc, ir );
