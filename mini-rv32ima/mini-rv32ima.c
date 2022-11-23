@@ -27,13 +27,17 @@ struct InternalCPUState
 	uint32_t mscratch;
 	uint32_t mtvec;
 	uint32_t mie;
-	uint64_t cycle;
 	uint32_t mip;
 	uint32_t mstatus;
 	uint32_t mepc;
 	uint32_t mtval;
 	uint32_t mcause;
 	uint32_t reserved[21];
+	uint32_t cycleh;
+	uint32_t cyclel;
+	uint32_t timermatchh;
+	uint32_t timermatchl;
+	int triggertime; // 1 bit really.
 	uint8_t uart8250[8]; //@248
 	uint8_t * image;
 };
@@ -166,7 +170,7 @@ int ReadCSR( struct InternalCPUState * state, int csr )
 	case 0x340: return state->mscratch; break;
 	case 0x305: return state->mtvec; break;
 	case 0x304: return state->mie; break;
-	case 0xC00: return state->cycle; break;
+	case 0xC00: return state->cyclel; break;
 	case 0x344: return state->mip; break;
 	case 0x341: return state->mepc; break;
 	case 0x300: return state->mstatus; //mstatus
@@ -204,6 +208,18 @@ void WriteCSR( struct InternalCPUState * state, int csr, uint32_t value )
 			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 		break;
 	}
+	case 0x138: 
+	{
+		// Special, side-channel printf.
+		printf( "SIDE-CHANNEL-DEBUG: %08x\n", value );
+
+		uint32_t * regs = state->registers;
+		printf( "%08x Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", state->pc,
+			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
+		break;
+	}
 	case 0x340: state->mscratch = value; break;
 	case 0x305: state->mtvec = value; break;
 	case 0x304: state->mie = value; break;
@@ -227,20 +243,6 @@ void WriteCSR( struct InternalCPUState * state, int csr, uint32_t value )
 
 int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress )
 {
-#if 0
-	if( ( state->cycle % 50000 ) == 49999 )
-	{
-		if( state->mstatus & 0x8 )
-		{
-			// Fire interrupt.
-			// https://stackoverflow.com/a/61916199/2926815
-			state->mepc = state->pc;
-			state->mcause = 1;
-			state->mstatus &= ~0x8;
-			state->pc = state->mtvec;
-		}
-	}
-#endif
 
 	uint32_t pc = state->pc;
 	uint32_t * regs = state->registers;
@@ -256,8 +258,37 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	INST_DBG( "PC: %08x / IR: %08x (OPC: %02x)\n", pc, ir, ir & 0x7f );
 	int retval = 0;
 
+#if 0
+	if( state->triggertime || ( state->cycleh == state->timermatchh && state->cyclel == state->timermatchl ) && ( state->timermatchh || state->timermatchl )  )
+	{
+		state->triggertime = 1;
+		if( ( state->mstatus & 0x80 ) == 0x80 )
+		{
+			printf( "FIRING TIMER            ******************************* %08x\n", state->mstatus );
+			// Fire interrupt.
+			// https://stackoverflow.com/a/61916199/2926815
+
+
+/*
+					printf( "EBRK: %08x\n", state->mstatus );
+					state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff7f );
+					state->mstatus &= ~0x8;
+					printf( "EBRK2: %08x\n", state->mstatus );
+*/
+//			state->mstatus &= ~0x88;
+
+
+			state->mepc = pc; //XXX XXX XXX This is almost certainly wrong, it should probably be +4.
+			state->mtval = 0;
+			state->mcause = 0x80000007; //MSB = "Interrupt 1" 7 = "Machine timer interrupt"
+			pc = state->mtvec - 4;
+			state->triggertime = 0;
+		}
+	}
+#endif
+
 	// Print debug info ever random number of cycles.
-	if( state->cycle % 9948247); else
+	if( state->cyclel % 9948247); else
 	{
 		printf( "%d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
 			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
@@ -345,15 +376,15 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					state->uart8250[5] |= 0x60;  // Always ready for more!
 					if( rdid ) regs[rdid] = state->uart8250[rsval];
 				}
-				else if( rsval >= 0xa0000000 && rsval < 0xa0010000 )
+				else if( rsval >= 0x82000000 && rsval < 0x82010000 )
 				{
 					uint32_t val = 0;
 
 					// https://chromitem-soc.readthedocs.io/en/latest/clint.html
-					if( rsval == 0xa000bffc )
-						val = state->cycle >> 32;
-					else if( rsval == 0xa000bff8 )
-						val = state->cycle;
+					if( rsval == 0x8200bffc )
+						val = state->cycleh;
+					else if( rsval == 0x8200bff8 )
+						val = state->cyclel;
 					else
 						printf( "CLNT Access READ [%08x] (%08x + %08x)\n", rsval, rs1, imm_se );
 					if( rdid ) regs[rdid] = val;
@@ -407,9 +438,15 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					}
 					addy = (addy - 0x90000000) - (intptr_t)image + (intptr_t)state->uart8250;
 				}
-				else if( addy >= 0xa0000000 && addy < 0xa0010000 )
+				else if( addy >= 0x82000000 && addy < 0x82010000 )
 				{
-					printf( "CLNT Access WRITE [%08x] = %08x\n", addy, rs2 );
+
+					if( addy == 0x82004004 )
+						state->timermatchh = rs2;
+					else if( addy == 0x82004000 )
+						state->timermatchl = rs2;
+					else
+						printf( "CLNT Access WRITE [%08x] = %08x\n", addy, rs2 );
 				}
 				else
 				{
@@ -470,12 +507,6 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					// RV32M
 					// XXX TODO: Check MULH/MULHSU/MULHU
 
-					if( ( (ir>>12) & 0x100 ) && rs2 == 0 )
-					{
-						//Integer division by zero
-						
-					}
-					else
 					{
 						switch( (ir>>12)&7 )
 						{
@@ -550,8 +581,8 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					pc = state->mepc-4;
 
 					// MIE = MPIE
-					//state->mstatus = (( state->mstatus & 0x80) >> 4) | ( state->mstatus & 0xfffffff7 );
-					//state->mstatus |= 0x80;
+					state->mstatus = (( state->mstatus & 0x80) >> 4) | ( state->mstatus & 0xfffffff7 );
+					state->mstatus |= 0x80;
 					//Table 7.6. MRET then in mstatus/mstatush sets MPV=0, MPP=0, MIE=MPIE, and MPIE=1. La
 					// Should also pdate mstatus to reflect correct mode.
 					rdid = 0; do_write= 0;
@@ -580,8 +611,14 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 						regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
 						regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 
-					state->mepc = pc+4;
+					state->mepc = pc; //XXX XXX XXX This is almost certainly wrong, it should probably be +4.
 					state->mtval = 0;
+
+					printf( "EBRK: %08x\n", state->mstatus );
+					state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff7f );
+					state->mstatus &= ~0x8;
+					printf( "EBRK2: %08x\n", state->mstatus );
+
 					pc = state->mtvec - 4;
 				}
 				break;
@@ -672,7 +709,8 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	}
 
 	// Increment both wall-clock and instruction count time.
-	++state->cycle;
+	++state->cyclel;
+	if( state->cyclel == 0 ) state->cycleh++;
 
 	if( retval < 0 )
 	{
