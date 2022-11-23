@@ -72,3 +72,13 @@ make
  * https://blog.pimaker.at/texts/rvc1/
 
 
+## General notes:
+ * QEMU
+ * Pi's Linux
+ * https://github.com/cnlohr/riscv_emufun/commit/2f09cdeb378dc0215c07eb63f5a6fb43dbbf1871#diff-b48ccd795ae9aced07d022bf010bf9376232c4d78210c3113d90a8d349c59b3dL440
+ * Making the kernel assembly to dig through.
+ * touch kernel_config && make
+ * Debugging process.
+
+
+

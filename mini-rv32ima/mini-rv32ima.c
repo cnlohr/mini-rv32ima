@@ -27,10 +27,11 @@ struct InternalCPUState
 	uint32_t mscratch;
 	uint32_t mtvec;
 	uint32_t mie;
-	uint32_t cycle;
+	uint64_t cycle;
 	uint32_t mip;
 	uint32_t mstatus;
 	uint32_t mepc;
+	uint32_t mtval;
 	uint32_t mcause;
 	uint32_t reserved[21];
 	uint8_t uart8250[8]; //@248
@@ -159,6 +160,7 @@ int main( int argc, char ** argv )
 // Generally, support for Zicsr
 int ReadCSR( struct InternalCPUState * state, int csr )
 {
+	//printf( "READ: %04x  @ %08x\n", csr, state->pc );
 	switch( csr )
 	{
 	case 0x340: return state->mscratch; break;
@@ -166,7 +168,10 @@ int ReadCSR( struct InternalCPUState * state, int csr )
 	case 0x304: return state->mie; break;
 	case 0xC00: return state->cycle; break;
 	case 0x344: return state->mip; break;
+	case 0x341: return state->mepc; break;
 	case 0x300: return state->mstatus; //mstatus
+	case 0x342: return state->mcause; break;
+	case 0x343: return state->mtval; break;
 
 
 	case 0x3B0: return 0; break; //pmpaddr0
@@ -184,20 +189,29 @@ int ReadCSR( struct InternalCPUState * state, int csr )
 
 void WriteCSR( struct InternalCPUState * state, int csr, uint32_t value )
 {
-	printf( "%04x = %08x\n", csr, value );
+	//printf( "WRITE: %04x = %08x (%08x)\n", csr, value, state->pc );
 	switch( csr )
 	{
 	case 0x137: 
 	{
 		// Special, side-channel printf.
 		printf( "SIDE-CHANNEL-DEBUG: %s\n", state->image + value - 0x80000000 );
+
+		uint32_t * regs = state->registers;
+		printf( "%08x Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", state->pc,
+			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 		break;
 	}
 	case 0x340: state->mscratch = value; break;
 	case 0x305: state->mtvec = value; break;
 	case 0x304: state->mie = value; break;
 	case 0x344: state->mip = value; break;
+	case 0x341: state->mepc = value; break;
 	case 0x300: state->mstatus = value; break; //mstatus
+	case 0x342: state->mcause = value; break;
+	case 0x343: state->mtval = value; break;
 	case 0x3a0: break; //pmpcfg0
 	case 0x3B0: break; //pmpaddr0
 	case 0xf11: break; //mvendorid
@@ -213,7 +227,7 @@ void WriteCSR( struct InternalCPUState * state, int csr, uint32_t value )
 
 int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress )
 {
-
+#if 0
 	if( ( state->cycle % 50000 ) == 49999 )
 	{
 		if( state->mstatus & 0x8 )
@@ -224,10 +238,10 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			state->mcause = 1;
 			state->mstatus &= ~0x8;
 			state->pc = state->mtvec;
-			printf( "FIRING INTERRUPT\n" );
 		}
 	}
-	
+#endif
+
 	uint32_t pc = state->pc;
 	uint32_t * regs = state->registers;
 
@@ -242,6 +256,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	INST_DBG( "PC: %08x / IR: %08x (OPC: %02x)\n", pc, ir, ir & 0x7f );
 	int retval = 0;
 
+	// Print debug info ever random number of cycles.
 	if( state->cycle % 9948247); else
 	{
 		printf( "%d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
@@ -322,19 +337,32 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			uint32_t loaded = 0;
 			INST_DBG( "LOADING RSVAL: %08x (%08x + %08x)\n", rsval, rs1, imm_se );
 			rsval -= ram_image_offset;
-			if( rsval >= 0x90000000 && rsval < 0x90000008 ) 
+			if( rsval >= ram_amt-3 )
 			{
-				//Special: UART.
-				//if(rsval != 0x90000005 ) printf( "****************************Read UART: %08x %08x\n", rsval, pc );
-				rsval = (rsval - 0x90000000);
-				state->uart8250[5] |= 0x60;
-				//printf( "=> %08x\n", *((uint32_t*)(image + rsval)) );
-				if( rdid ) regs[rdid] = state->uart8250[rsval];
-			}
-			else if( rsval >= ram_amt-3 )
-			{
-				retval = -99;
-				printf( "Load OOB Access [%08x] (%08x + %08x)\n", rsval, rs1, imm_se );
+				if( rsval >= 0x90000000 && rsval < 0x90000008 ) 
+				{
+					rsval = (rsval - 0x90000000);
+					state->uart8250[5] |= 0x60;  // Always ready for more!
+					if( rdid ) regs[rdid] = state->uart8250[rsval];
+				}
+				else if( rsval >= 0xa0000000 && rsval < 0xa0010000 )
+				{
+					uint32_t val = 0;
+
+					// https://chromitem-soc.readthedocs.io/en/latest/clint.html
+					if( rsval == 0xa000bffc )
+						val = state->cycle >> 32;
+					else if( rsval == 0xa000bff8 )
+						val = state->cycle;
+					else
+						printf( "CLNT Access READ [%08x] (%08x + %08x)\n", rsval, rs1, imm_se );
+					if( rdid ) regs[rdid] = val;
+				}
+				else
+				{
+					retval = -99;
+					printf( "Load OOB Access [%08x] (%08x + %08x)\n", rsval, rs1, imm_se );
+				}
 			}
 			else
 			{
@@ -363,24 +391,31 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			INST_DBG( "%08x\n", addy );
 			addy += rs1 - ram_image_offset;
 
-			if( addy >= 0x90000000 && addy < 0x90000008 ) 
+			if( addy >= ram_amt-3 )
 			{
-				//Special: UART.
-				if( addy == 0x90000000 )
+				if( addy >= 0x90000000 && addy < 0x90000008 ) 
 				{
-					printf( "%c", rs2 );
-					fflush( stdout );
+					//Special: UART.
+					if( addy == 0x90000000 )
+					{
+						printf( "%c", rs2 );
+						fflush( stdout );
+					}
+					else
+					{
+						//printf( "************************** Write UART: %08x -> %08x\n", addy, rs2 );
+					}
+					addy = (addy - 0x90000000) - (intptr_t)image + (intptr_t)state->uart8250;
+				}
+				else if( addy >= 0xa0000000 && addy < 0xa0010000 )
+				{
+					printf( "CLNT Access WRITE [%08x] = %08x\n", addy, rs2 );
 				}
 				else
 				{
-					printf( "************************** Write UART: %08x -> %08x\n", addy, rs2 );
+					retval = -99;
+					printf( "Store OOB Access [%08x]\n", addy );
 				}
-				addy = (addy - 0x90000000) - (intptr_t)image + (intptr_t)state->uart8250;
-			}
-			else if( addy >= ram_amt-3 )
-			{
-				retval = -99;
-				printf( "Store OOB Access [%08x]\n", addy );
 			}
 			else
 			{
@@ -493,7 +528,8 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			uint32_t writeval = rs1;
 			int do_write = !!(microop & 3);
 			uint32_t readval = 0;
-			if( ( (microop & 3) == 1 ) || ( (microop & 3) == 3 ) )
+
+			if( (microop & 3) )
 			{
 				readval = ReadCSR( state, csrno );
 			}
@@ -503,14 +539,50 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			case 0b000: //ECALL/EBREAK/WFI
 				if( csrno == 0x105 )
 					;// WFI, Ignore.
+				else if( ( ( csrno & 0xff ) == 0x02 ) )
+				{
+					//URET, MRET, SRET, HRET
+					printf( "MRET!!! %d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
+						regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+						regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+						regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
+					printf( "MRET: %p %p %p %p\n", state->mie, state->mip, state->mstatus, state->mepc );
+					pc = state->mepc-4;
+
+					// MIE = MPIE
+					//state->mstatus = (( state->mstatus & 0x80) >> 4) | ( state->mstatus & 0xfffffff7 );
+					//state->mstatus |= 0x80;
+					//Table 7.6. MRET then in mstatus/mstatush sets MPV=0, MPP=0, MIE=MPIE, and MPIE=1. La
+					// Should also pdate mstatus to reflect correct mode.
+					rdid = 0; do_write= 0;
+				}
 				else
 				{
 					if( (ir >> 24) == 0xff )
 					{
 						exit(1);
 					}
-					//retval = -100;
-					printf( "EBREAK EBREAK EBREAK @ %08x\n", pc );//retval = 1;
+
+					if( csrno == 0 )
+					{
+						printf( "ECALL ECALL ECALL @ %08x\n", pc );//retval = 1;						
+						state->mcause = 8; // 8 = "Environment call from U-mode"
+					}
+					else
+					{
+						printf( "EBREAK EBREAK EBREAK @ %08x\n", pc );//retval = 1;
+						state->mcause = 3;
+					}
+					rdid = 0; do_write= 0;
+
+					printf( "%d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
+						regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+						regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+						regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
+
+					state->mepc = pc+4;
+					state->mtval = 0;
+					pc = state->mtvec - 4;
 				}
 				break;
 			case 0b001: writeval = rs1; break;  				//CSRRW
@@ -522,7 +594,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			case 0b111: writeval = readval & ~rs1imm; break;	//CSRRCI
 			}
 
-			printf( "Zifencei+Zicsr %08x [%08x] ==> %d; %04x (Read: %08x; Write: %08x / %08x %08x)\n", pc, ir, microop, csrno, readval, writeval, rs1, rs1imm ); 
+			//printf( "Zifencei+Zicsr %08x [%08x] ==> %d; %04x (Read: %08x; Write: %08x / %08x %08x)\n", pc, ir, microop, csrno, readval, writeval, rs1, rs1imm ); 
 
 			if( do_write) WriteCSR( state, csrno, writeval );
 			if( rdid ) regs[rdid] = readval;
@@ -562,7 +634,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				switch( irmid )
 				{
 					case 0b00010: dowrite = 0; break; //LR.W
-					case 0b00011: readval = 0; printf( "SC.W!!!!!!!!!!!!\n" ); break; //SC.W (Lie and always say it's good)
+					case 0b00011: readval = 0; break; //SC.W (Lie and always say it's good)
 					case 0b00001: break; //AMOSWAP.W
 					case 0b00000: rs2 += readval; break; //AMOADD.W
 					case 0b00100: rs2 ^= readval; break; //AMOXOR.W

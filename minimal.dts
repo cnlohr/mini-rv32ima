@@ -7,7 +7,7 @@
 	model = "riscv-minimal-nommu,qemu";
 
 	chosen {
-		bootargs = "ro earlycon=uart8250,mmio,0x20000000,115200n8 console=ttyS0 RTEST";
+		bootargs = "ro earlycon=uart8250,mmio,0x10000000,115200n8 console=ttyS0 RTEST";
 		stdout-path = "/soc/uart@10000000";
 	};
 
@@ -81,10 +81,10 @@
 			compatible = "syscon";
 		};
 
-		clint@2000000 {
+		clint@20000000 {
 			interrupts-extended = <0x02 0x03 0x02 0x07>;
-			reg = <0x00 0x2000000 0x00 0x10000>;
-			compatible = "sifive,clint0\0riscv,clint0";
+			reg = <0x00 0x20000000 0x00 0x10000>;
+			compatible = "sifive,clint0";
 		};
 	};
 };
