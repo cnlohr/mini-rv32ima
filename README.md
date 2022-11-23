@@ -41,7 +41,9 @@ output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -n
 output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -machine dumpdtb=../dtb.dtb
 ```
 
-
+## Running from INITRD instead of DISK
+ * In buildroot: Filesystem Images, check cpio, no compression.
+ * In kernel: 
 
 ## Building Tests
 

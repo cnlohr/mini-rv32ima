@@ -7,7 +7,7 @@ testsbi : mini-rv32ima
 	./mini-rv32ima -f ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.bin
 
 testkern : mini-rv32ima
-	./mini-rv32ima -f ../buildroot/output/images/Image
+	./mini-rv32ima -b ../minimal.dtb -f ../buildroot/output/images/Image
 
 dumpsbi : 
 	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.elf >fw_payload.S
