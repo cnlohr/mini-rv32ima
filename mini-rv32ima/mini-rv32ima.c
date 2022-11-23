@@ -37,7 +37,6 @@ struct InternalCPUState
 	uint32_t cyclel;
 	uint32_t timermatchh;
 	uint32_t timermatchl;
-	int triggertime; // 1 bit really.
 	uint8_t uart8250[8]; //@248
 	uint8_t * image;
 };
@@ -543,17 +542,20 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					;// WFI, Ignore.
 				else if( ( ( csrno & 0xff ) == 0x02 ) )
 				{
+					printf( "MRET<< %p %p %p %p\n", state->mie, state->mip, state->mstatus, state->mepc );
+
 					//URET, MRET, SRET, HRET
 					printf( "MRET!!! %d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
 						regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
 						regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
 						regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
-					printf( "MRET: %p %p %p %p\n", state->mie, state->mip, state->mstatus, state->mepc );
 
 					// MIE = MPIE -> Trap Return 
 					state->mstatus = (( state->mstatus & 0x80) >> 4) | ( state->mstatus & 0xfffffff7 );
 					state->mstatus |= 0x80;
+
 					pc = state->mepc-4;
+					printf( "MRET>> %p %p %p %p\n", state->mie, state->mip, state->mstatus, state->mepc );
 
 					//https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
 					//Table 7.6. MRET then in mstatus/mstatush sets MPV=0, MPP=0, MIE=MPIE, and MPIE=1. La
@@ -671,33 +673,29 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	}
 
 
-
-#if 1
-	if( state->triggertime || ( state->cycleh == state->timermatchh && state->cyclel == state->timermatchl ) && ( state->timermatchh || state->timermatchl )  )
+//XXX CNL XXX TODO PICK UP HERE!!!
+#if 0
+	if( ( state->cycleh > state->timermatchh || ( state->cycleh == state->timermatchh && state->cyclel > state->timermatchl ) ) && ( state->timermatchh || state->timermatchl )  )
 	{
-		state->triggertime = 1;
-		if( ( state->mstatus & 0x08 ) == 0x08 )
-		{
-			// Fire interrupt.
-			// https://stackoverflow.com/a/61916199/2926815
-
-			state->mip |= 1<<3; //MSIP of MIP
-		}
+		// Fire interrupt.
+		// https://stackoverflow.com/a/61916199/2926815
+		state->mip |= 1<<7; //MSIP of MIP
+	}
+	else
+	{
+		state->mip &= ~(1<<7);
 	}
 
-
-	if( ( state->mip & state->mie & (1<<3) ) && ( state->mstatus & 0x8 /*mie*/) )
+	if( ( state->mip & state->mie & (1<<7) /*mtie*/ ) && ( state->mstatus & 0x8 /*mie*/) )
 	{
-		state->mip &= ~(1<<3);
-
-		printf( "EBRK: %08x\n", state->mstatus );
+		printf( "EBRK: %08x /// %08x %08x // MS: %08x\n", state->mstatus, state->mip, state->mie,state->mstatus );
 		state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff77 );
-		printf( "EBRK2: %08x\n", state->mstatus );
 		state->mepc = pc+4;
 		state->mtval = 0;
 		state->mcause = 0x80000007; //MSB = "Interrupt 1" 7 = "Machine timer interrupt"
 		pc = state->mtvec - 4;
-		state->triggertime = 0;
+
+		printf( "EBRK2: %08x  => MEPC: %p MTVEC %p;; MS: %08x\n", state->mie, state->mepc, state->mtvec, state->mstatus );
 	}
 #endif
 
