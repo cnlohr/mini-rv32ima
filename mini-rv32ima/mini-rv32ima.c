@@ -34,6 +34,7 @@ struct InternalCPUState
 	uint32_t mcause;
 	uint32_t reserved[21];
 	uint8_t uart8250[8]; //@248
+	uint8_t * image;
 };
 
 
@@ -136,6 +137,7 @@ int main( int argc, char ** argv )
 	core.pc = ram_image_offset;
 	core.registers[10] = 0x00; //hart ID
 	core.registers[11] = dtb_ptr?(dtb_ptr+0x80000000):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
+	core.image = ram_image;
 
 	// Image is loaded.
 	int rt;
@@ -180,11 +182,17 @@ int ReadCSR( struct InternalCPUState * state, int csr )
 	}
 }
 
-void WriteCSR( struct InternalCPUState * state, int csr, int value )
+void WriteCSR( struct InternalCPUState * state, int csr, uint32_t value )
 {
 	printf( "%04x = %08x\n", csr, value );
 	switch( csr )
 	{
+	case 0x137: 
+	{
+		// Special, side-channel printf.
+		printf( "SIDE-CHANNEL-DEBUG: %s\n", state->image + value - 0x80000000 );
+		break;
+	}
 	case 0x340: state->mscratch = value; break;
 	case 0x305: state->mtvec = value; break;
 	case 0x304: state->mie = value; break;
@@ -317,9 +325,11 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			if( rsval >= 0x90000000 && rsval < 0x90000008 ) 
 			{
 				//Special: UART.
-				printf( "****************************Read UART: %08x\n", rsval );
-				rsval = (rsval - 0x90000000) - (intptr_t)image + (intptr_t)state->uart8250;
-				state->uart8250[5] |= 0x20;
+				//if(rsval != 0x90000005 ) printf( "****************************Read UART: %08x %08x\n", rsval, pc );
+				rsval = (rsval - 0x90000000);
+				state->uart8250[5] |= 0x60;
+				//printf( "=> %08x\n", *((uint32_t*)(image + rsval)) );
+				if( rdid ) regs[rdid] = state->uart8250[rsval];
 			}
 			else if( rsval >= ram_amt-3 )
 			{
@@ -356,7 +366,15 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			if( addy >= 0x90000000 && addy < 0x90000008 ) 
 			{
 				//Special: UART.
-				printf( "************************** Write UART: %08x -> %08x\n", addy, rs2 );
+				if( addy == 0x90000000 )
+				{
+					printf( "%c", rs2 );
+					fflush( stdout );
+				}
+				else
+				{
+					printf( "************************** Write UART: %08x -> %08x\n", addy, rs2 );
+				}
 				addy = (addy - 0x90000000) - (intptr_t)image + (intptr_t)state->uart8250;
 			}
 			else if( addy >= ram_amt-3 )
@@ -416,16 +434,25 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				{
 					// RV32M
 					// XXX TODO: Check MULH/MULHSU/MULHU
-					switch( (ir>>12)&7 )
+
+					if( ( (ir>>12) & 0x100 ) && rs2 == 0 )
 					{
-						case 0b000: val = rs1 * rs2; break; // MUL
-						case 0b001: val = ((int64_t)rs1 * (int64_t)rs2) >> 32; break; // MULH
-						case 0b010: val = ((int64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHSU
-						case 0b011: val = ((uint64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHU
-						case 0b100: val = (int32_t)rs1 / (int32_t)rs2; break; // DIV
-						case 0b101: val = rs1 / rs2; break; // DIVU
-						case 0b110: val = (int32_t)rs1 % (int32_t)rs2; break; // REM
-						case 0b111: val = rs1 % rs2; break; // REMU
+						//Integer division by zero
+						
+					}
+					else
+					{
+						switch( (ir>>12)&7 )
+						{
+							case 0b000: val = rs1 * rs2; break; // MUL
+							case 0b001: val = ((int64_t)rs1 * (int64_t)rs2) >> 32; break; // MULH
+							case 0b010: val = ((int64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHSU
+							case 0b011: val = ((uint64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHU
+							case 0b100: if( rs2 == 0 ) val = -1; else val = (int32_t)rs1 / (int32_t)rs2; break; // DIV
+							case 0b101: if( rs2 == 0 ) val = 0xffffffff; else val = rs1 / rs2; break; // DIVU
+							case 0b110: if( rs2 == 0 ) val = rs1; else val = (int32_t)rs1 % (int32_t)rs2; break; // REM
+							case 0b111: if( rs2 == 0 ) val = rs1; else val = rs1 % rs2; break; // REMU
+						}
 					}
 				}
 				else
@@ -437,7 +464,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 						case 0b010: val = (int32_t)rs1 < (int32_t)rs2; break;
 						case 0b011: val = rs1 < rs2; break;
 						case 0b100: val = rs1 ^ rs2; break;
-						case 0b101: val = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2 ) : ( rs1 << rs2 ); break;
+						case 0b101: val = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2 ) : ( rs1 >> rs2 ); break;
 						case 0b110: val = rs1 | rs2; break;
 						case 0b111: val = rs1 & rs2; break;
 					}
@@ -478,6 +505,10 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					;// WFI, Ignore.
 				else
 				{
+					if( (ir >> 24) == 0xff )
+					{
+						exit(1);
+					}
 					//retval = -100;
 					printf( "EBREAK EBREAK EBREAK @ %08x\n", pc );//retval = 1;
 				}
