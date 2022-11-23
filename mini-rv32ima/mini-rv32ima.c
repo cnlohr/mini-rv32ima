@@ -163,7 +163,7 @@ int main( int argc, char ** argv )
 // Generally, support for Zicsr
 int ReadCSR( struct InternalCPUState * state, int csr )
 {
-	//printf( "READ: %04x  @ %08x\n", csr, state->pc );
+	printf( "READ: %04x  @ %08x\n", csr, state->pc );
 	switch( csr )
 	{
 	case 0x340: return state->mscratch; break;
@@ -192,7 +192,7 @@ int ReadCSR( struct InternalCPUState * state, int csr )
 
 void WriteCSR( struct InternalCPUState * state, int csr, uint32_t value )
 {
-	//printf( "WRITE: %04x = %08x (%08x)\n", csr, value, state->pc );
+	printf( "WRITE: %04x = %08x (%08x)\n", csr, value, state->pc );
 	switch( csr )
 	{
 	case 0x137: 
@@ -674,7 +674,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 
 
 //XXX CNL XXX TODO PICK UP HERE!!!
-#if 0
+#if 1
 	if( ( state->cycleh > state->timermatchh || ( state->cycleh == state->timermatchh && state->cyclel > state->timermatchl ) ) && ( state->timermatchh || state->timermatchl )  )
 	{
 		// Fire interrupt.
