@@ -258,35 +258,6 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	INST_DBG( "PC: %08x / IR: %08x (OPC: %02x)\n", pc, ir, ir & 0x7f );
 	int retval = 0;
 
-#if 0
-	if( state->triggertime || ( state->cycleh == state->timermatchh && state->cyclel == state->timermatchl ) && ( state->timermatchh || state->timermatchl )  )
-	{
-		state->triggertime = 1;
-		if( ( state->mstatus & 0x80 ) == 0x80 )
-		{
-			printf( "FIRING TIMER            ******************************* %08x\n", state->mstatus );
-			// Fire interrupt.
-			// https://stackoverflow.com/a/61916199/2926815
-
-
-/*
-					printf( "EBRK: %08x\n", state->mstatus );
-					state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff7f );
-					state->mstatus &= ~0x8;
-					printf( "EBRK2: %08x\n", state->mstatus );
-*/
-//			state->mstatus &= ~0x88;
-
-
-			state->mepc = pc; //XXX XXX XXX This is almost certainly wrong, it should probably be +4.
-			state->mtval = 0;
-			state->mcause = 0x80000007; //MSB = "Interrupt 1" 7 = "Machine timer interrupt"
-			pc = state->mtvec - 4;
-			state->triggertime = 0;
-		}
-	}
-#endif
-
 	// Print debug info ever random number of cycles.
 	if( state->cyclel % 9948247); else
 	{
@@ -578,13 +549,15 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 						regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
 						regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 					printf( "MRET: %p %p %p %p\n", state->mie, state->mip, state->mstatus, state->mepc );
-					pc = state->mepc-4;
 
-					// MIE = MPIE
+					// MIE = MPIE -> Trap Return 
 					state->mstatus = (( state->mstatus & 0x80) >> 4) | ( state->mstatus & 0xfffffff7 );
 					state->mstatus |= 0x80;
+					pc = state->mepc-4;
+
+					//https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
 					//Table 7.6. MRET then in mstatus/mstatush sets MPV=0, MPP=0, MIE=MPIE, and MPIE=1. La
-					// Should also pdate mstatus to reflect correct mode.
+					// Should also update mstatus to reflect correct mode.
 					rdid = 0; do_write= 0;
 				}
 				else
@@ -615,8 +588,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					state->mtval = 0;
 
 					printf( "EBRK: %08x\n", state->mstatus );
-					state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff7f );
-					state->mstatus &= ~0x8;
+					state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff77 );
 					printf( "EBRK2: %08x\n", state->mstatus );
 
 					pc = state->mtvec - 4;
@@ -697,6 +669,38 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			retval = -1;
 		}
 	}
+
+
+
+#if 1
+	if( state->triggertime || ( state->cycleh == state->timermatchh && state->cyclel == state->timermatchl ) && ( state->timermatchh || state->timermatchl )  )
+	{
+		state->triggertime = 1;
+		if( ( state->mstatus & 0x08 ) == 0x08 )
+		{
+			// Fire interrupt.
+			// https://stackoverflow.com/a/61916199/2926815
+
+			state->mip |= 1<<3; //MSIP of MIP
+		}
+	}
+
+
+	if( ( state->mip & state->mie & (1<<3) ) && ( state->mstatus & 0x8 /*mie*/) )
+	{
+		state->mip &= ~(1<<3);
+
+		printf( "EBRK: %08x\n", state->mstatus );
+		state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff77 );
+		printf( "EBRK2: %08x\n", state->mstatus );
+		state->mepc = pc+4;
+		state->mtval = 0;
+		state->mcause = 0x80000007; //MSB = "Interrupt 1" 7 = "Machine timer interrupt"
+		pc = state->mtvec - 4;
+		state->triggertime = 0;
+	}
+#endif
+
 
 #ifndef DEBUG_INSTRUCTIONS
 	if( retval )
