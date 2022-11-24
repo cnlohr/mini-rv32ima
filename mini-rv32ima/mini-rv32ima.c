@@ -242,7 +242,7 @@ void WriteCSR( struct InternalCPUState * state, int csr, uint32_t value )
 
 int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress )
 {
-
+	static int alsolog;
 	uint32_t pc = state->pc;
 	uint32_t * regs = state->registers;
 
@@ -258,14 +258,23 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	int retval = 0;
 
 	// Print debug info ever random number of cycles.
-	if( state->cyclel % 9948247); else
+	if(  (state->cyclel % 9948247 ) ); else
 	{
-		printf( "%d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
+		printf( "SPART: %d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
 			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
 			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
 			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 	}
 	
+	if( state->pc == 0x80046f00 || alsolog )
+	{
+		if(	state->pc == 0x80046f00 ) alsolog = 5;
+		if( alsolog ) alsolog--;
+		printf( "SPART: %d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
+			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
+	}
 
 	switch( ir & 0x7f )
 	{
@@ -377,6 +386,10 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					case 0b101: loaded = *((uint16_t*)(image + rsval)); break;
 					default: retval = -1;
 				}
+				if( rsval == 0x00293E5C )
+				{
+					printf( ">>>>>>>>>>LOADING 80293E5C = %08x, PC: %08x\n", loaded, pc );
+				}
 				if( rdid ) regs[rdid] = loaded;
 				INST_DBG( "LOAD [%d, %08x] = %08x  [%x]\n", rdid,rsval, regs[rdid], ( ir >> 12 ) & 0x7);
 			}
@@ -435,6 +448,10 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					default: retval = -1;
 				}
 				INST_DBG( "STORE [%08x] = %08x [%x]\n", addy, rs2, ( ir >> 12 ) & 0x7 );
+				if( addy == 0x00293E5C )
+				{
+					printf( ">>>>>>>>>>saving 80293E5C = %08x, PC = %08x\n", rs2, pc);
+				}
 			}
 			break;
 		}
@@ -561,6 +578,8 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					//Table 7.6. MRET then in mstatus/mstatush sets MPV=0, MPP=0, MIE=MPIE, and MPIE=1. La
 					// Should also update mstatus to reflect correct mode.
 					rdid = 0; do_write= 0;
+					
+					alsolog = 15;
 				}
 				else
 				{
@@ -645,7 +664,14 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				switch( irmid )
 				{
 					case 0b00010: dowrite = 0; break; //LR.W
-					case 0b00011: readval = 0; break; //SC.W (Lie and always say it's good)
+					case 0b00011: readval = 0;
+					
+				if( rs1 == 0x00293E5C )
+				{
+					printf( ">>>>>>>>>>RV32A 80293E5C = %08x  PC: %08x\n", rs2, pc );
+				}
+
+					break; //SC.W (Lie and always say it's good)
 					case 0b00001: break; //AMOSWAP.W
 					case 0b00000: rs2 += readval; break; //AMOADD.W
 					case 0b00100: rs2 ^= readval; break; //AMOXOR.W
@@ -688,14 +714,21 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 
 	if( ( state->mip & state->mie & (1<<7) /*mtie*/ ) && ( state->mstatus & 0x8 /*mie*/) )
 	{
-		printf( "EBRK: %08x /// %08x %08x // MS: %08x\n", state->mstatus, state->mip, state->mie,state->mstatus );
+		printf( "TIMER: %08x /// %08x %08x // MS: %08x\n", state->mstatus, state->mip, state->mie,state->mstatus );
 		state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff77 );
 		state->mepc = pc+4;
 		state->mtval = 0;
 		state->mcause = 0x80000007; //MSB = "Interrupt 1" 7 = "Machine timer interrupt"
 		pc = state->mtvec - 4;
 
-		printf( "EBRK2: %08x  => MEPC: %p MTVEC %p;; MS: %08x\n", state->mie, state->mepc, state->mtvec, state->mstatus );
+
+		printf( "TIMER: %08x Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", state->pc,
+			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
+		printf( "TIMER: %08x  => MEPC: %p MTVEC %p;; MS: %08x\n", state->mie, state->mepc, state->mtvec, state->mstatus );
+		
+		alsolog = 25;
 	}
 #endif
 
