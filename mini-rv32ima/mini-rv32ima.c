@@ -13,6 +13,11 @@
 #define INST_DBG( x... )
 #endif
 
+#ifdef SOME_EXTRA_DEBUG
+#define INST_INFO( x... ) printf( x );
+#else
+#define INST_INFO( x... )
+#endif
 
 uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber );
 
@@ -40,6 +45,7 @@ struct InternalCPUState
 	uint32_t timerl;
 	uint32_t timermatchh;
 	uint32_t timermatchl;
+	uint32_t privilege; // Note: only like a few bits are used.  (Machine = 3, User = 0)
 	uint8_t uart8250[8]; //@248
 	uint8_t * image;
 };
@@ -145,7 +151,11 @@ int main( int argc, char ** argv )
 			long dtblen = ftell( f );
 			fseek( f, 0, SEEK_SET );
 			dtb_ptr = ram_amt - dtblen;
-			fread( ram_image + dtb_ptr, dtblen, 1, f );
+			if( fread( ram_image + dtb_ptr, dtblen, 1, f ) != 1 )
+			{
+				fprintf( stderr, "Error: Could not open dtb \"%s\"\n", dtb_file_name );
+				return -9;
+			}
 			fclose( f );
 		}
 	}
@@ -160,6 +170,7 @@ int main( int argc, char ** argv )
 	core.pc = ram_image_offset;
 	core.registers[10] = 0x00; //hart ID
 	core.registers[11] = dtb_ptr?(dtb_ptr+0x80000000):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
+	core.privilege = 3; // Machine-mode.
 	core.image = ram_image;
 
 	// Image is loaded.
@@ -182,7 +193,7 @@ int main( int argc, char ** argv )
 // Generally, support for Zicsr
 int ReadCSR( struct InternalCPUState * state, int csr )
 {
-	//printf( "READ: %04x  @ %08x\n", csr, state->pc );
+	//printf( "READ: %04x            @ %08x\n", csr, state->pc );
 	switch( csr )
 	{
 	case 0x340: return state->mscratch; break;
@@ -211,7 +222,8 @@ int ReadCSR( struct InternalCPUState * state, int csr )
 
 void WriteCSR( struct InternalCPUState * state, int csr, uint32_t value )
 {
-	//printf( "WRITE: %04x = %08x (%08x)\n", csr, value, state->pc );
+	//if( csr == 0x341 )
+	//	printf( "WRITE: %04x = %08x (%08x)\n", csr, value, state->pc );
 	switch( csr )
 	{
 	case 0x137: 
@@ -261,6 +273,8 @@ void WriteCSR( struct InternalCPUState * state, int csr, uint32_t value )
 
 int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress )
 {
+	uint32_t * regs = state->registers;
+	static int alsolog;
 
 //XXX CNL XXX TODO PICK UP HERE!!!
 #if 1
@@ -279,12 +293,25 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	// On an interrupt, the system moves current MIE into MPIE
 	if( ( state->mip & state->mie & (1<<7) /*mtie*/ ) && ( state->mstatus & 0x8 /*mie*/) )
 	{
+
+
+		//printf( "TIMER %08x Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", state->pc,
+		//	regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+		//	regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+		//	regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
+
+		// Force machine mode.
+	//	state->privilege = 3;
+		//int tprl = 3;
 		//printf( "TIMER: %08x /// %08x %08x // MS: %08x\n", state->mstatus, state->mip, state->mie,state->mstatus );
-		state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff77 );
+		//printf( "MSTATUS: %08x\n", state->mstatus );
+		state->mstatus = (( state->mstatus & 0x08) << 4) | (state->privilege << 11 );
+		//printf( "MSTATUS: %08x\n", state->mstatus );
 		state->mepc = state->pc;
 		state->mtval = 0;
 		state->mcause = 0x80000007; //MSB = "Interrupt 1" 7 = "Machine timer interrupt"
 		state->pc = state->mtvec;
+
 		return 0;
 #if 0
 		printf( "TIMER: %08x Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", state->pc,
@@ -299,7 +326,8 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 
 
 	uint32_t pc = state->pc;
-	uint32_t * regs = state->registers;
+
+	//if( pc == 0x80046f00 ) alsolog = 10;
 
 	uint32_t ofs_pc = pc - ram_image_offset;
 	if( ofs_pc & 3 || ofs_pc >= ram_amt )
@@ -312,21 +340,24 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	INST_DBG( "PC: %08x / IR: %08x (OPC: %02x)\n", pc, ir, ir & 0x7f );
 	int retval = 0;
 
+	if( pc == 0x80046f08 )
+	{
+		printf( "=========================================STACK FAIL\n");
+	}
+
 #if 1
 	// Print debug info ever random number of cycles.
 	if(  (state->cyclel % 9948247 ) ); else
 	{
-		printf( "SPART: %d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
+		INST_INFO( "SPART: %d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
 			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
 			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
 			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 	}
 #endif
-#if 0
-	static int alsolog;
-	if( state->pc == 0x80046f00 || alsolog )
+#if 1
+	if( alsolog )
 	{
-		if(	state->pc == 0x80046f00 ) alsolog = 5;
 		if( alsolog ) alsolog--;
 		printf( "SPART: %d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
 			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
@@ -629,7 +660,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				else if( ( ( csrno & 0xff ) == 0x02 ) )
 				{
 #if 0
-					printf( "MRET<< %p %p %p %p\n", state->mie, state->mip, state->mstatus, state->mepc );
+					printf( "MRET<< %p %p %p %p   MRET TYPE:[%d]\n", state->mie, state->mip, state->mstatus, state->mepc, ir >> 28 );
 
 					//URET, MRET, SRET, HRET
 					printf( "MRET!!! %d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
@@ -638,11 +669,18 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 						regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 #endif
 					// MIE = MPIE -> Trap Return 
-					state->mstatus = (( state->mstatus & 0x80) >> 4) | ( state->mstatus & 0xfffffff7 );
-					state->mstatus |= 0x80;
+
+	//				printf( "MRSTAT: %08x\n", state->mstatus );
+					uint32_t startmstatus = state->mstatus;
+					//state->privilege = (ir & 0x30000000)>>28;  // I thought you could get this from mret/sret, but I guess not?
+					state->privilege = (state->mstatus >> 11) & 3;
+					state->mstatus = (( state->mstatus & 0x80) >> 4) | (state->privilege << 11) | 0x80;
+					printf( "MRSTAT: %08x  %08x  [[%08x]]\n", state->mstatus, startmstatus, ir );
+					if( ir != 0x30200073 ) printf( "********************************************************\n" );
+				//	alsolog = 10;
 
 					pc = state->mepc-4;
-					printf( "MRET>> %08x %08x %08x %08x THIS PC %08x\n", state->mie, state->mip, state->mstatus, state->mepc, pc);
+	//				printf( "<<MRET>> %08x %08x %08x MEPC = %08x THIS PC %08x\n", state->mie, state->mip, state->mstatus, state->mepc, pc);
 
 					//https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
 					//Table 7.6. MRET then in mstatus/mstatush sets MPV=0, MPP=0, MIE=MPIE, and MPIE=1. La
@@ -655,13 +693,14 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				{
 					if( (ir >> 24) == 0xff )
 					{
+						printf( "Custom opcode for force exit\n" );
 						exit(1);
 					}
 
 					if( csrno == 0 )
 					{
 						printf( "ECALL ECALL ECALL @ %08x\n", pc );//retval = 1;						
-						state->mcause = 8; // 8 = "Environment call from U-mode"
+						state->mcause = 8; // 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
 					}
 					else
 					{
@@ -675,14 +714,16 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					//	regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
 					//	regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 
-					state->mepc = pc; //XXX XXX XXX This is almost certainly wrong, it should probably be +4.
+					state->mepc = pc; //XXX TRICKY: Looks like the kernel advances mepc
 					state->mtval = pc;
 
-					printf( "Setting %08x %08x -> %08x\n", pc, pc, state->mtvec );
+//					alsolog = 5;
 
-					//printf( "EBRK: %08x\n", state->mstatus );
-					state->mstatus = (( state->mstatus & 0x08) << 4) | ( state->mstatus & 0xffffff77 );
-					//printf( "EBRK2: %08x\n", state->mstatus );
+//					printf( "TRAPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP %08x %08x -> %08x  MEPC=%08x\n", pc, pc, state->mtvec, state->mepc );
+
+//					printf( "EBRK: %08x\n", state->mstatus );
+					state->mstatus = (( state->mstatus & 0x08) << 4) | (state->privilege << 11);
+					printf( "EBRK2: %08x  [[%08x]]\n", state->mstatus, ir );
 
 					pc = (state->mtvec - 4);
 				}
@@ -786,7 +827,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	++state->cyclel;
 	if( state->cyclel == 0 ) state->cycleh++;
 
-	if( ( state->cyclel % 16 ) == 0 )
+	if( ( state->cyclel % 1 ) == 0 )
 	{
 		state->timerl++;
 		if( state->timerl == 0 ) state->timerh++;
@@ -797,6 +838,16 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 		fprintf( stderr, "Error PC: %08x / IR: %08x\n", pc, ir );
 		return -1;
 	}
+
+	if( pc < 10000 )
+	{
+		INST_INFO( "PC WILL BE INVALID was %08x / %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", state->pc, pc, ir,
+						regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+						regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+						regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
+
+	}
+
 	state->pc = pc + 4;
 	return retval;
 }

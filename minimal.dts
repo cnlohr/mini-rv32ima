@@ -7,7 +7,7 @@
 	model = "riscv-minimal-nommu,qemu";
 
 	chosen {
-		bootargs = "ro earlycon=uart8250,mmio,0x20000000,115200n8 console=ttyS0 RTEST";
+		bootargs = "ro earlycon=uart8250,mmio,0x10000000,115200n8 console=ttyS0 RTEST";
 		stdout-path = "/soc/uart@10000000";
 	};
 
