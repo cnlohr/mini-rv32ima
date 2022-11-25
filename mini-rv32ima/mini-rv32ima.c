@@ -57,9 +57,7 @@ struct InternalCPUState
 	uint32_t mcause;
 	
 	// Note: only like a few bits are used.  (Machine = 3, User = 0)
-	// Bits 0..2 = privilege.
-	// Bit 7 = pending char in in buffer.
-	// Bits 8..15 = pending char.
+	// Bits 0..1 = privilege.
 	uint32_t extraflags; 
 
 	uint8_t * image;
@@ -184,7 +182,7 @@ int main( int argc, char ** argv )
 
 	core.pc = ram_image_offset;
 	core.registers[10] = 0x00; //hart ID
-	core.registers[11] = dtb_ptr?(dtb_ptr+0x80000000):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
+	core.registers[11] = dtb_ptr?(dtb_ptr+ram_image_offset):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
 	core.extraflags |= 3; // Machine-mode.
 	core.image = ram_image;
 
@@ -207,7 +205,6 @@ int main( int argc, char ** argv )
 int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress )
 {
 	uint32_t * regs = state->registers;
-	static int alsolog;
 
 	// Handle Timer interrupt.
 	if( ( state->timerh > state->timermatchh || ( state->timerh == state->timermatchh && state->timerl > state->timermatchl ) ) && ( state->timermatchh || state->timermatchl )  )
@@ -223,10 +220,25 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 		state->extraflags |= 3; // HMM THERE ARE CONDITION WHERE THIS IS NOT TRUE.  XXX CNL XXX  ===>>> ACTUALLY IT IS ALWAYS 3 BUT WE SHOULD PUT OLD STATUS IN???
 		state->mepc = state->pc;
 		state->mtval = 0;
+		state->extraflags &= ~4;
 		state->mcause = 0x80000007; //MSB = "Interrupt 1" 7 = "Machine timer interrupt"
 		state->pc = state->mtvec;
 		return 0;
 	}
+	
+	// Increment both wall-clock and instruction count time.
+	++state->cyclel;
+	if( state->cyclel == 0 ) state->cycleh++;
+
+	if( ( state->cyclel % 10 ) == 0 )
+	{
+		state->timerl++;
+		if( state->timerl == 0 ) state->timerh++;
+	}
+
+	// If WFI, don't process.
+	if( state->extraflags & 4 )
+		return 0;
 
 	uint32_t pc = state->pc;
 
@@ -240,48 +252,31 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	uint32_t ir = *(uint32_t*)(ram_image + ofs_pc);
 	int retval = 0;
 
-#if 1
-	if( alsolog )
-	{
-		if( alsolog ) alsolog--;
-		printf( "SPART: %d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
-			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
-			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
-			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
-	}
-#endif
+	int rdid = (ir >> 7) & 0x1f;
+	int rval = 0;
 
 	switch( ir & 0x7f )
 	{
 		case 0b0110111: // LUI
-		{
-			uint32_t rdid = (ir >> 7) & 0x1f;
-			if( rdid ) regs[ rdid ] = ( ir & 0xfffff000 ) ;
+			rval = ( ir & 0xfffff000 );
 			break;
-		}
 		case 0b0010111: // AUIPC
-		{
-			uint32_t rdid = (ir >> 7) & 0x1f;
-			if( rdid ) regs[ rdid ] = pc + ( ir & 0xfffff000 );
+			rval = pc + ( ir & 0xfffff000 );
 			break;
-		}
 		case 0b1101111: // JAL
 		{
-			uint32_t rdid = (ir >> 7) & 0x1f;
 			int32_t reladdy = ((ir & 0x80000000)>>11) | ((ir & 0x7fe00000)>>20) | ((ir & 0x00100000)>>9) | ((ir&0x000ff000));
 			if( reladdy & 0x00100000 ) reladdy |= 0xffe00000; // Sign extension.
-			if( rdid ) regs[ rdid ] = pc + 4;
+			rval = pc + 4;
 			pc = pc + reladdy - 4;
 			break;
 		}
 		case 0b1100111: // JALR
 		{
 			uint32_t imm = ir >> 20;
-			uint32_t rdid = (ir >> 7) & 0x1f;
 			int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
-			uint32_t t = pc + 4;
+			rval = pc + 4;
 			pc = ( (regs[ (ir >> 15) & 0x1f ] + imm_se) & ~1) - 4;
-			if( rdid ) regs[ rdid ] = t;
 			break;
 		}
 		case 0b1100011: // Branch
@@ -291,6 +286,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			int32_t rs1 = regs[(ir >> 15) & 0x1f];
 			int32_t rs2 = regs[(ir >> 20) & 0x1f];
 			immm4 = pc + immm4 - 4;
+			rdid = 0;
 			switch( ( ir >> 12 ) & 0x7 )
 			{
 				// BEQ, BNE, BLT, BGE, BLTU, BGEU 
@@ -300,49 +296,40 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				case 0b101: if( rs1 >= rs2 ) pc = immm4; break; //BGE
 				case 0b110: if( (uint32_t)rs1 < (uint32_t)rs2 ) pc = immm4; break;   //BLTU
 				case 0b111: if( (uint32_t)rs1 >= (uint32_t)rs2 ) pc = immm4; break;  //BGEU
-				default: retval = -1;
+				default: retval = (2+1);
 			}
 			break;
 		}
 		case 0b0000011: // Load
 		{
-			uint32_t rdid = (ir >> 7) & 0x1f;
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
 			uint32_t imm = ir >> 20;
 			int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
 			uint32_t rsval = rs1 + imm_se;
-			uint32_t loaded = 0;
+
 			rsval -= ram_image_offset;
 			if( rsval >= ram_amt-3 )
 			{
-				if( rsval >= 0x90000000 && rsval < 0x90000008 ) 
+				rsval -= ram_image_offset;
+				if( rsval >= 0x10000000 && rsval < 0x10000008 )  //UART
 				{
-					int rval = 0;
 					int byteswaiting;
 					ioctl(0, FIONREAD, &byteswaiting);
-					if( rsval == 0x90000005 )
+					if( rsval == 0x10000005 )
 						rval = 0x60 | !!byteswaiting;
-					else if( rsval == 0x90000000 && byteswaiting )
+					else if( rsval == 0x10000000 && byteswaiting )
 						rval = getchar();
-					if( rdid ) regs[rdid] = rval;
 				}
-				else if( rsval >= 0x82000000 && rsval < 0x82010000 )
+				else if( rsval >= 0x02000000 && rsval < 0x02010000 ) //CLNT
 				{
-					uint32_t val = 0;
-
-					// https://chromitem-soc.readthedocs.io/en/latest/clint.html
-					if( rsval == 0x8200bffc )
-						val = state->timerh;
-					else if( rsval == 0x8200bff8 )
-						val = state->timerl;
-					else
-						printf( "****************FAIL***************************** CLNT Access READ [%08x] (%08x + %08x)\n", rsval, rs1, imm_se );
-					if( rdid ) regs[rdid] = val;
+					if( rsval == 0x0200bffc ) // https://chromitem-soc.readthedocs.io/en/latest/clint.html
+						rval = state->timerh;
+					else if( rsval == 0x0200bff8 )
+						rval = state->timerl;
 				}
 				else
 				{
-					retval = -99;
-					printf( "Load OOB Access [%08x] (%08x + %08x)\n", rsval, rs1, imm_se );
+					retval = (5+1);
 				}
 			}
 			else
@@ -350,19 +337,13 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				switch( ( ir >> 12 ) & 0x7 )
 				{
 					//LB, LH, LW, LBU, LHU
-					case 0b000: loaded = *((int8_t*)(image + rsval)); break;
-					case 0b001: loaded = *((int16_t*)(image + rsval)); break;
-					case 0b010: loaded = *((uint32_t*)(image + rsval)); break;
-					case 0b100: loaded = *((uint8_t*)(image + rsval)); break;
-					case 0b101: loaded = *((uint16_t*)(image + rsval)); break;
-					default: retval = -1;
+					case 0b000: rval = *((int8_t*)(image + rsval)); break;
+					case 0b001: rval = *((int16_t*)(image + rsval)); break;
+					case 0b010: rval = *((uint32_t*)(image + rsval)); break;
+					case 0b100: rval = *((uint8_t*)(image + rsval)); break;
+					case 0b101: rval = *((uint16_t*)(image + rsval)); break;
+					default: retval = (2+1);
 				}
-				if( rsval == 0x00293E5C )
-				{
-					//printf( ">>>>>>>>>>LOADING 80293E5C = %08x, PC: %08x\n", loaded, pc );
-				}
-				if( rdid ) regs[rdid] = loaded;
-				INST_DBG( "LOAD [%d, %08x] = %08x  [%x]\n", rdid,rsval, regs[rdid], ( ir >> 12 ) & 0x7);
 			}
 			break;
 		}
@@ -371,37 +352,34 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
 			uint32_t rs2 = regs[(ir >> 20) & 0x1f];
 			uint32_t addy = ( ( ir >> 7 ) & 0x1f ) | ( ( ir & 0xfe000000 ) >> 20 );
-			INST_DBG( "STORE ADDY: %08x + %08x; ", addy, rs1 );
 			if( addy & 0x800 ) addy |= 0xfffff000;
-			INST_DBG( "%08x\n", addy );
 			addy += rs1 - ram_image_offset;
+			rdid = 0;
 
 			if( addy >= ram_amt-3 )
 			{
-				if( addy >= 0x90000000 && addy < 0x90000008 ) 
+				addy -= ram_image_offset;
+				if( addy >= 0x10000000 && addy < 0x10000008 ) 
 				{
 					//Special: UART (8250)
 					//If writing a byte, allow it to flow into output.
-					if( addy == 0x90000000 )
+					if( addy == 0x10000000 )
 					{
 						printf( "%c", rs2 );
 						fflush( stdout );
 					}
 				}
-				else if( addy >= 0x82000000 && addy < 0x82010000 )
+				else if( addy >= 0x02000000 && addy < 0x02010000 )
 				{
 
-					if( addy == 0x82004004 )
+					if( addy == 0x02004004 )
 						state->timermatchh = rs2;
-					else if( addy == 0x82004000 )
+					else if( addy == 0x02004000 )
 						state->timermatchl = rs2;
 					// Other CLNT access is ignored.
 				}
 				else
-				{
-					retval = -99;
-					printf( "Store OOB Access [%08x]\n", addy );
-				}
+					retval = (7+1); // Store access fault.
 			}
 			else
 			{
@@ -411,13 +389,9 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					case 0b000: *((uint8_t*)(image + addy)) = rs2; break;
 					case 0b001: *((uint16_t*)(image + addy)) = rs2; break;
 					case 0b010: *((uint32_t*)(image + addy)) = rs2; break;
-					default: retval = -1;
+					default: retval = (2+1);
 				}
 				INST_DBG( "STORE [%08x] = %08x [%x]\n", addy, rs2, ( ir >> 12 ) & 0x7 );
-				if( addy == 0x00293E5C )
-				{
-					//printf( ">>>>>>>>>>saving 80293E5C = %08x, PC = %08x\n", rs2, pc);
-				}
 			}
 			break;
 		}
@@ -427,112 +401,89 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			imm = imm | (( imm & 0x800 )?0xfffff000:0);
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
 			uint32_t rs2id = (ir >> 20) & 0x1f;
-			uint32_t rdid = (ir >> 7) & 0x1f;
-			uint32_t val = 0;
 			// ADDI, SLTI, SLTIU, XORI, ORI, ANDI
 			switch( (ir>>12)&7 )
 			{
-				case 0b000: val = rs1 + imm; break;
-				case 0b001: val = rs1 << rs2id; break;
-				case 0b010: val = (int)rs1 < (int)imm; break;  //signed (SLTI)
-				case 0b011: val = rs1 < imm; break; //unsigned (SLTIU)
-				case 0b100: val = rs1 ^ imm; break;
-				case 0b101: val = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2id ) : (rs1 >> rs2id); break;
-				case 0b110: val = rs1 | imm; break;
-				case 0b111: val = rs1 & imm; break;
-				default: retval = -1;
+				case 0b000: rval = rs1 + imm; break;
+				case 0b001: rval = rs1 << rs2id; break;
+				case 0b010: rval = (int)rs1 < (int)imm; break;  //signed (SLTI)
+				case 0b011: rval = rs1 < imm; break; //unsigned (SLTIU)
+				case 0b100: rval = rs1 ^ imm; break;
+				case 0b101: rval = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2id ) : (rs1 >> rs2id); break;
+				case 0b110: rval = rs1 | imm; break;
+				case 0b111: rval = rs1 & imm; break;
 			}
-			if( rdid )
-				regs[rdid] = val;
-			INST_DBG( "OP-IMMEDIATE:%d = %08x\n", rdid, regs[rdid] );
 			break;
 		}
 		case 0b0110011: // Op
 		{
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
 			uint32_t rs2 = regs[(ir >> 20) & 0x1f];
-			uint32_t rdid = (ir >> 7) & 0x1f;
-			uint32_t val = 0;
-			if( rdid )
-			{
-				if( ir & 0x02000000 )
-				{
-					// RV32M
-					// XXX TODO: Check MULH/MULHSU/MULHU
 
-					{
-						switch( (ir>>12)&7 )
-						{
-							case 0b000: val = rs1 * rs2; break; // MUL
-							case 0b001: val = ((int64_t)rs1 * (int64_t)rs2) >> 32; break; // MULH
-							case 0b010: val = ((int64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHSU
-							case 0b011: val = ((uint64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHU
-							case 0b100: if( rs2 == 0 ) val = -1; else val = (int32_t)rs1 / (int32_t)rs2; break; // DIV
-							case 0b101: if( rs2 == 0 ) val = 0xffffffff; else val = rs1 / rs2; break; // DIVU
-							case 0b110: if( rs2 == 0 ) val = rs1; else val = (int32_t)rs1 % (int32_t)rs2; break; // REM
-							case 0b111: if( rs2 == 0 ) val = rs1; else val = rs1 % rs2; break; // REMU
-						}
-					}
-				}
-				else
+			if( ir & 0x02000000 )
+			{
+				switch( (ir>>12)&7 ) //RV32M
 				{
-					switch( (ir>>12)&7 )
-					{
-						case 0b000: val = (ir & 0x40000000 ) ? ( rs1 - rs2 ) : ( rs1 + rs2 ); break;
-						case 0b001: val = rs1 << rs2; break;
-						case 0b010: val = (int32_t)rs1 < (int32_t)rs2; break;
-						case 0b011: val = rs1 < rs2; break;
-						case 0b100: val = rs1 ^ rs2; break;
-						case 0b101: val = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2 ) : ( rs1 >> rs2 ); break;
-						case 0b110: val = rs1 | rs2; break;
-						case 0b111: val = rs1 & rs2; break;
-					}
+					case 0b000: rval = rs1 * rs2; break; // MUL
+					case 0b001: rval = ((int64_t)rs1 * (int64_t)rs2) >> 32; break; // MULH
+					case 0b010: rval = ((int64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHSU
+					case 0b011: rval = ((uint64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHU
+					case 0b100: if( rs2 == 0 ) rval = -1; else rval = (int32_t)rs1 / (int32_t)rs2; break; // DIV
+					case 0b101: if( rs2 == 0 ) rval = 0xffffffff; else rval = rs1 / rs2; break; // DIVU
+					case 0b110: if( rs2 == 0 ) rval = rs1; else rval = (int32_t)rs1 % (int32_t)rs2; break; // REM
+					case 0b111: if( rs2 == 0 ) rval = rs1; else rval = rs1 % rs2; break; // REMU
 				}
-				regs[rdid] = val;
-				INST_DBG( "OP:%d = %08x\n", rdid, regs[rdid] );
+			}
+			else
+			{
+				switch( (ir>>12)&7 )
+				{
+					case 0b000: rval = (ir & 0x40000000 ) ? ( rs1 - rs2 ) : ( rs1 + rs2 ); break;
+					case 0b001: rval = rs1 << rs2; break;
+					case 0b010: rval = (int32_t)rs1 < (int32_t)rs2; break;
+					case 0b011: rval = rs1 < rs2; break;
+					case 0b100: rval = rs1 ^ rs2; break;
+					case 0b101: rval = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2 ) : ( rs1 >> rs2 ); break;
+					case 0b110: rval = rs1 | rs2; break;
+					case 0b111: rval = rs1 & rs2; break;
+				}
 			}
 			break;
 		}
 		case 0b0001111:
 		{
-			int fencetype = (ir >> 12) & 0b111;
+			rdid = 0; // fencetype = (ir >> 12) & 0b111; We ignore fences in this impl.
 			break;
 		}
 		case 0b1110011:  // Zifencei+Zicsr
 		{
-			uint32_t rdid = (ir >> 7) & 0x1f;
 			int rs1imm = (ir >> 15) & 0x1f;
 			uint32_t rs1 = regs[rs1imm];
 			uint32_t csrno = ir >> 20;
-
 			int microop = ( ir >> 12 ) & 0b111;
 			uint32_t writeval = rs1;
-			int do_write = !!(microop & 3);
-			uint32_t readval = 0;
-
 			if( (microop & 3) ) // It's a Zicsr function.
 			{
-				// Will need to Read CSR first.								
 				// https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
 				// Generally, support for Zicsr
 				switch( csrno )
 				{
-				case 0x340: readval = state->mscratch; break;
-				case 0x305: readval = state->mtvec; break;
-				case 0x304: readval = state->mie; break;
-				case 0xC00: readval = state->cyclel; break;
-				case 0x344: readval = state->mip; break;
-				case 0x341: readval = state->mepc; break;
-				case 0x300: readval = state->mstatus; break; //mstatus
-				case 0x342: readval = state->mcause; break;
-				case 0x343: readval = state->mtval; break;
-				case 0x3B0: readval = 0; break; //pmpaddr0
-				case 0x3a0: readval = 0; break; //pmpcfg0
-				case 0xf11: readval = 0xff0ff0ff; break; //mvendorid
-				case 0xf12: readval = 0x00000000; break; //marchid
-				case 0xf13: readval = 0x00000000; break; //mimpid
-				case 0xf14: readval = 0x00000000; break; //mhartid
-				case 0x301: readval = 0x40001101; break; //misa (XLEN=32, IMA) TODO: Consider setting X bit.
+				case 0x340: rval = state->mscratch; break;
+				case 0x305: rval = state->mtvec; break;
+				case 0x304: rval = state->mie; break;
+				case 0xC00: rval = state->cyclel; break;
+				case 0x344: rval = state->mip; break;
+				case 0x341: rval = state->mepc; break;
+				case 0x300: rval = state->mstatus; break; //mstatus
+				case 0x342: rval = state->mcause; break;
+				case 0x343: rval = state->mtval; break;
+				case 0x3B0: rval = 0; break; //pmpaddr0
+				case 0x3a0: rval = 0; break; //pmpcfg0
+				case 0xf11: rval = 0xff0ff0ff; break; //mvendorid
+				case 0xf12: rval = 0x00000000; break; //marchid
+				case 0xf13: rval = 0x00000000; break; //mimpid
+				case 0xf14: rval = 0x00000000; break; //mhartid
+				case 0x301: rval = 0x40001101; break; //misa (XLEN=32, IMA) TODO: Consider setting X bit.
 				default:
 					MINIRV32WARN( "READ CSR: %08x\n", csrno );
 					break;
@@ -540,62 +491,59 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 
 				switch( microop )
 				{
-					case 0b001: writeval = rs1; break;  				//CSRRW
-					case 0b010: writeval = readval | rs1; break;		//CSRRS
-					case 0b011: writeval = readval & ~rs1; break;		//CSRRC
-					case 0b101: writeval = rs1imm; break;				//CSRRWI
-					case 0b110: writeval = readval | rs1imm; break;		//CSRRSI
-					case 0b111: writeval = readval & ~rs1imm; break;	//CSRRCI
+					case 0b001: writeval = rs1; break;  			//CSRRW
+					case 0b010: writeval = rval | rs1; break;		//CSRRS
+					case 0b011: writeval = rval & ~rs1; break;		//CSRRC
+					case 0b101: writeval = rs1imm; break;			//CSRRWI
+					case 0b110: writeval = rval | rs1imm; break;	//CSRRSI
+					case 0b111: writeval = rval & ~rs1imm; break;	//CSRRCI
 				}
 
-				if( do_write)
+				switch( csrno )
 				{
-					switch( csrno )
-					{
-					case 0x137: // Special, side-channel printf.
-						MINIRV32WARN( "SIDE-CHANNEL-DEBUG: %s\n", state->image + writeval - 0x80000000 );
-						break;
-					case 0x138: // Special, side-channel printf.
-						MINIRV32WARN( "SIDE-CHANNEL-DEBUG: %08x\n", writeval );
-						break;
-					case 0x340: state->mscratch = writeval; break;
-					case 0x305: state->mtvec = writeval; break;
-					case 0x304: state->mie = writeval; break;
-					case 0x344: state->mip = writeval; break;
-					case 0x341: state->mepc = writeval; break;
-					case 0x300: state->mstatus = writeval; break; //mstatus
-					case 0x342: state->mcause = writeval; break;
-					case 0x343: state->mtval = writeval; break;
-					case 0x3a0: break; //pmpcfg0
-					case 0x3B0: break; //pmpaddr0
-					case 0xf11: break; //mvendorid
-					case 0xf12: break; //marchid
-					case 0xf13: break; //mimpid
-					case 0xf14: break; //mhartid
-					case 0x301: break; //misa
-					default:
-						MINIRV32WARN( "WRITE CSR: %08x = %08x\n", csrno, writeval );
-					}
+				case 0x137: // Special, side-channel printf.
+					MINIRV32WARN( "SIDE-CHANNEL-DEBUG: %s\n", state->image + writeval - ram_image_offset );
+					break;
+				case 0x138: // Special, side-channel printf.
+					MINIRV32WARN( "SIDE-CHANNEL-DEBUG: %08x\n", writeval );
+					break;
+				case 0x340: state->mscratch = writeval; break;
+				case 0x305: state->mtvec = writeval; break;
+				case 0x304: state->mie = writeval; break;
+				case 0x344: state->mip = writeval; break;
+				case 0x341: state->mepc = writeval; break;
+				case 0x300: state->mstatus = writeval; break; //mstatus
+				case 0x342: state->mcause = writeval; break;
+				case 0x343: state->mtval = writeval; break;
+				case 0x3a0: break; //pmpcfg0
+				case 0x3B0: break; //pmpaddr0
+				case 0xf11: break; //mvendorid
+				case 0xf12: break; //marchid
+				case 0xf13: break; //mimpid
+				case 0xf14: break; //mhartid
+				case 0x301: break; //misa
+				default:
+					MINIRV32WARN( "WRITE CSR: %08x = %08x\n", csrno, writeval );
 				}
-				if( rdid ) regs[rdid] = readval;
 			}
-			else if( microop == 0b000 )
+			else if( microop == 0b000 ) // "SYSTEM"
 			{
+				rdid = 0;
 				//ECALL/EBREAK/WFI
 				if( csrno == 0x105 )
-					;// WFI, Ignore.
-				else if( ( ( csrno & 0xff ) == 0x02 ) ) // MRET
 				{
-					uint32_t startmstatus = state->mstatus;
-					state->mstatus = (( state->mstatus & 0x80) >> 4) | ((state->extraflags&3) << 11) | 0x80;
-					state->extraflags = (state->extraflags & 0xfffffffc) | (startmstatus >> 11) & 3;
-
-					pc = state->mepc-4;
-
+					state->mstatus |= 8;
+					state->extraflags |= 4;// WFI, Ignore.
+				}
+				else if( ( ( csrno & 0xff ) == 0x02 ) )  // MRET
+				{
 					//https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
 					//Table 7.6. MRET then in mstatus/mstatush sets MPV=0, MPP=0, MIE=MPIE, and MPIE=1. La
 					// Should also update mstatus to reflect correct mode.
-					rdid = 0; do_write= 0;
+					uint32_t startmstatus = state->mstatus;
+					state->mstatus = (( state->mstatus & 0x80) >> 4) | ((state->extraflags&3) << 11) | 0x80;
+					state->extraflags = (state->extraflags & ~3) | ((startmstatus >> 11) & 3);
+					pc = state->mepc-4;
 				}
 				else //EBREAK
 				{
@@ -605,25 +553,19 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 						exit(1);
 					}
 					if( csrno == 0 )
-						state->mcause = 8; // 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
+						retval = (state->extraflags & 3) ? (11+1) : (8+1); // 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
 					else
-						state->mcause = 3; // 3 = "Breakpoint"
-					rdid = 0; do_write= 0;
-					state->mepc = pc; //XXX TRICKY: The kernel advances mepc
-					state->mtval = pc;
-					state->mstatus = (( state->mstatus & 0x08) << 4) | ((state->extraflags&3) << 11);
-					state->extraflags = state->extraflags | 3;
-					pc = (state->mtvec - 4);
+						retval = (3+1); // 3 = "Breakpoint"
 				}
-			} // Note micrrop 0b100 == undefined.
+			}
+			else
+				retval = (2+1); 				// Note micrrop 0b100 == undefined.
 			break;
 		}
 		case 0b0101111: // RV32A
 		{
-			uint32_t rdid = (ir >> 7) & 0x1f;
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
 			uint32_t rs2 = regs[(ir >> 20) & 0x1f];
-			uint32_t readval = 0;
 			uint32_t irmid = ( ir>>27 ) & 0x1f;
 
 			rs1 -= ram_image_offset;
@@ -632,88 +574,68 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 
 			if( rs1 >= ram_amt-3 )
 			{
-				retval = -99;
-				printf( "Store OOB Access [%08x]\n", rs2 );
+				retval = (7+1); //Store/AMO access fault
 			}
 			else
 			{
-				if( irmid != 0b00011 )
-				{
-					readval = *((uint32_t*)(image + rs1));
-				}
-				INST_DBG( "RV32A: %d: %08x ==> %08x\n", irmid, rs1, readval );
+				rval = *((uint32_t*)(image + rs1));
+				
+				INST_DBG( "RV32A: %d: %08x ==> %08x\n", irmid, rs1, rval );
 
 				// Referenced a little bit of https://github.com/franzflasch/riscv_em/blob/master/src/core/core.c
 				int dowrite = 1;
 				switch( irmid )
 				{
 					case 0b00010: dowrite = 0; break; //LR.W
-					case 0b00011: readval = 0;
-					
-					break; //SC.W (Lie and always say it's good)
+					case 0b00011: rval = 0; break; //SC.W (Lie and always say it's good)
 					case 0b00001: break; //AMOSWAP.W
-					case 0b00000: rs2 += readval; break; //AMOADD.W
-					case 0b00100: rs2 ^= readval; break; //AMOXOR.W
-					case 0b01100: rs2 &= readval; break; //AMOAND.W
-					case 0b01000: rs2 |= readval; break; //AMOOR.W
-					case 0b10000: rs2 = ((int)rs2<(int)readval)?rs2:readval; break; //AMOMIN.W
-					case 0b10100: rs2 = ((int)rs2>(int)readval)?rs2:readval; break; //AMOMAX.W
-					case 0b11000: rs2 = (rs2<readval)?rs2:readval; break; //AMOMINU.W
-					case 0b11100: rs2 = (rs2>readval)?rs2:readval; break; //AMOMAXU.W
-					default: retval = -100; dowrite = 0; rdid = 0; break; //Not supported.
+					case 0b00000: rs2 += rval; break; //AMOADD.W
+					case 0b00100: rs2 ^= rval; break; //AMOXOR.W
+					case 0b01100: rs2 &= rval; break; //AMOAND.W
+					case 0b01000: rs2 |= rval; break; //AMOOR.W
+					case 0b10000: rs2 = ((int)rs2<(int)rval)?rs2:rval; break; //AMOMIN.W
+					case 0b10100: rs2 = ((int)rs2>(int)rval)?rs2:rval; break; //AMOMAX.W
+					case 0b11000: rs2 = (rs2<rval)?rs2:rval; break; //AMOMINU.W
+					case 0b11100: rs2 = (rs2>rval)?rs2:rval; break; //AMOMAXU.W
+					default: retval = (2+1); dowrite = 0; break; //Not supported.
 				}
 				if( dowrite )
 					*((uint32_t*)(image + rs1)) = rs2;
-				if( rdid )
-					regs[rdid] = readval;
 			}
-
 			break;
 		}
-
 		default:
-		{
-			retval = -1;
-		}
+			retval = (2+1);
 	}
 
-#ifndef DEBUG_INSTRUCTIONS
-	if( retval )
-#endif
+	if( retval == 0 )
 	{
-		printf( "%d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
-			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
-			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
-			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
+		if( rdid ) regs[rdid] = rval;
 	}
-
-	// Increment both wall-clock and instruction count time.
-	++state->cyclel;
-	if( state->cyclel == 0 ) state->cycleh++;
-
-	if( ( state->cyclel % 1 ) == 0 )
+	else if( retval > 0 )
 	{
-		state->timerl++;
-		if( state->timerl == 0 ) state->timerh++;
+		state->mcause = retval - 1;
+		state->mepc = pc; //XXX TRICKY: The kernel advances mepc
+		state->mtval = pc;
+		state->mstatus = (( state->mstatus & 0x08) << 4) | ((state->extraflags&3) << 11);
+		state->extraflags = state->extraflags | 3;
+		pc = (state->mtvec - 4);
+		retval = 0;
 	}
-
-	if( retval < 0 )
+	else
 	{
 		fprintf( stderr, "Error PC: %08x / IR: %08x\n", pc, ir );
 		return -1;
 	}
 
-	if( pc < 10000 )
-	{
-		INST_INFO( "PC WILL BE INVALID was %08x / %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", state->pc, pc, ir,
-						regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
-						regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
-						regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
-	}
-
 	state->pc = pc + 4;
 	return retval;
 }
+
+//		printf( "%d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
+//			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+//			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
+//			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 
 uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber )
 {

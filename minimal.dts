@@ -19,7 +19,7 @@
 	cpus {
 		#address-cells = <0x01>;
 		#size-cells = <0x00>;
-		timebase-frequency = <100000000>;
+		timebase-frequency = <5000000>;
 
 		cpu@0 {
 			phandle = <0x01>;
