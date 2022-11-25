@@ -301,11 +301,11 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 		//	regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 
 		// Force machine mode.
-	//	state->privilege = 3;
 		//int tprl = 3;
 		//printf( "TIMER: %08x /// %08x %08x // MS: %08x\n", state->mstatus, state->mip, state->mie,state->mstatus );
 		//printf( "MSTATUS: %08x\n", state->mstatus );
 		state->mstatus = (( state->mstatus & 0x08) << 4) | (state->privilege << 11 );
+		state->privilege = 3; // HMM THERE ARE CONDITION WHERE THIS IS NOT TRUE.  XXX CNL XXX  ===>>> ACTUALLY IT IS ALWAYS 3 BUT WE SHOULD PUT OLD STATUS IN???
 		//printf( "MSTATUS: %08x\n", state->mstatus );
 		state->mepc = state->pc;
 		state->mtval = 0;
@@ -673,11 +673,12 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	//				printf( "MRSTAT: %08x\n", state->mstatus );
 					uint32_t startmstatus = state->mstatus;
 					//state->privilege = (ir & 0x30000000)>>28;  // I thought you could get this from mret/sret, but I guess not?
-					state->privilege = (state->mstatus >> 11) & 3;
-					state->mstatus = (( state->mstatus & 0x80) >> 4) | (state->privilege << 11) | 0x80;
-					printf( "MRSTAT: %08x  %08x  [[%08x]]\n", state->mstatus, startmstatus, ir );
+					state->mstatus = (( state->mstatus & 0x80) >> 4) | (0 << 11) | 0x80;
+//					printf( "MRSTAT: %08x  %08x  [[%08x]]\n", state->mstatus, startmstatus, ir );
 					if( ir != 0x30200073 ) printf( "********************************************************\n" );
 				//	alsolog = 10;
+
+					state->privilege = (startmstatus >> 11) & 3;
 
 					pc = state->mepc-4;
 	//				printf( "<<MRET>> %08x %08x %08x MEPC = %08x THIS PC %08x\n", state->mie, state->mip, state->mstatus, state->mepc, pc);
@@ -722,9 +723,9 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 //					printf( "TRAPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP %08x %08x -> %08x  MEPC=%08x\n", pc, pc, state->mtvec, state->mepc );
 
 //					printf( "EBRK: %08x\n", state->mstatus );
-					state->mstatus = (( state->mstatus & 0x08) << 4) | (state->privilege << 11);
+					state->mstatus = (( state->mstatus & 0x08) << 4) | (0 << 11);
 					printf( "EBRK2: %08x  [[%08x]]\n", state->mstatus, ir );
-
+					state->privilege = 3;
 					pc = (state->mtvec - 4);
 				}
 				break;
