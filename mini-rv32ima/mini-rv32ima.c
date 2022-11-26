@@ -22,6 +22,7 @@
 #define MINIRV32WARN( x... ) printf( x );
 
 uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber );
+uint64_t GetTimeMicroseconds();
 
 uint32_t ram_amt = 64*1024*1024;
 uint32_t ram_image_offset = 0x80000000;
@@ -56,13 +57,14 @@ struct InternalCPUState
 	uint32_t mtval;
 	uint32_t mcause;
 	
-	// Note: only like a few bits are used.  (Machine = 3, User = 0)
+	// Note: only a few bits are used.  (Machine = 3, User = 0)
 	// Bits 0..1 = privilege.
+	// Bit 2 = WFI (Wait for interrupt)
 	uint32_t extraflags; 
 };
 
 
-int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress );
+int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs );
 
 void reset_keyboard()
 {
@@ -75,9 +77,7 @@ void reset_keyboard()
 
 int main( int argc, char ** argv )
 {
-    atexit(reset_keyboard);
-
-	struct InternalCPUState core = { 0 };
+	atexit(reset_keyboard);
 	int i;
 	long long instct = -1;
 	int show_help = 0;
@@ -161,8 +161,8 @@ int main( int argc, char ** argv )
 			fseek( f, 0, SEEK_END );
 			long dtblen = ftell( f );
 			fseek( f, 0, SEEK_SET );
-			dtb_ptr = ram_amt - dtblen;
-			if( fread( ram_image + dtb_ptr, dtblen, 1, f ) != 1 )
+			dtb_ptr = ram_amt - dtblen - sizeof( struct InternalCPUState );
+			if( fread( ram_image + dtb_ptr, dtblen - sizeof( struct InternalCPUState ), 1, f ) != 1 )
 			{
 				fprintf( stderr, "Error: Could not open dtb \"%s\"\n", dtb_file_name );
 				return -9;
@@ -178,28 +178,29 @@ int main( int argc, char ** argv )
 		tcsetattr(0, TCSANOW, &term);
 	}
 
-	core.pc = ram_image_offset;
-	core.registers[10] = 0x00; //hart ID
-	core.registers[11] = dtb_ptr?(dtb_ptr+ram_image_offset):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
-	core.extraflags |= 3; // Machine-mode.
+	// The core lives at the end of RAM.
+	struct InternalCPUState * core = (struct InternalCPUState *)(ram_image + ram_amt - sizeof( struct InternalCPUState ));
+	core->pc = ram_image_offset;
+	core->registers[10] = 0x00; //hart ID
+	core->registers[11] = dtb_ptr?(dtb_ptr+ram_image_offset):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
+	core->extraflags |= 3; // Machine-mode.
 
 	// Image is loaded.
-	long long rt;
+	uint64_t rt;
+	uint64_t lastTime = GetTimeMicroseconds();
 	for( rt = 0; rt < instct || instct < 0; rt++ )
 	{
-		int ret = StepInstruction( &core, ram_image, 0 );
-		if( ret == 2 )
-		{
-			//HandleUART( &core, ram_image );
-		}
-		else if( ret != 0 )
+		uint32_t elapsedUs = GetTimeMicroseconds() - lastTime;
+		int ret = StepInstruction( core, ram_image, 0, elapsedUs );
+		if( ret != 0 )
 		{
 			break;
 		}
+		lastTime += elapsedUs;
 	}
 }
 
-int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress )
+int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs )
 {
 	uint32_t * regs = state->registers;
 	uint32_t retval = 0; // If positive, is a trap or interrupt.  If negative, is fatal error.
@@ -208,12 +209,10 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	++state->cyclel;
 	if( state->cyclel == 0 ) state->cycleh++;
 
-	if( ( state->cyclel % 10 ) == 0 )
-	{
-		state->timerl++;
-		if( state->timerl == 0 ) state->timerh++;
-	}
 
+	uint32_t new_timer = state->timerl + elapsedUs;
+	if( new_timer < state->timerl ) state->timerh++;
+	state->timerl = new_timer;
 
 	// Handle Timer interrupt.
 	if( ( state->timerh > state->timermatchh || ( state->timerh == state->timermatchh && state->timerl > state->timermatchl ) ) && ( state->timermatchh || state->timermatchl )  )
@@ -639,3 +638,28 @@ uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber )
 		return ret;
 	}
 }
+
+#if defined(WINDOWS) || defined(WIN32) || defined(_WIN32)
+#include <windows.h>
+uint64_t GetTimeMicroseconds()
+{
+	static LARGE_INTEGER lpf;
+	LARGE_INTEGER li;
+
+	if( !lpf.QuadPart )
+	{
+		QueryPerformanceFrequency( &lpf );
+	}
+
+	QueryPerformanceCounter( &li );
+	return ((uint64_t)li.QuadPart * 1000000LL) / (uint64_t)lpf.QuadPart;
+}
+#else
+#include <sys/time.h>
+uint64_t GetTimeMicroseconds()
+{
+	struct timeval tv;
+	gettimeofday( &tv, 0 );
+	return tv.tv_usec + ((uint64_t)(tv.tv_sec)) * 1000000LL;
+}
+#endif

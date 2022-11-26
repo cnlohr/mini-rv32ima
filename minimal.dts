@@ -7,13 +7,13 @@
 	model = "riscv-minimal-nommu,qemu";
 
 	chosen {
-		bootargs = "ro earlycon=uart8250,mmio,0x10000000,115200n8 console=ttyS0 RTEST";
+		bootargs = "ro con=uart8250,mmio,0x10000000,1000000 console=ttyS0";
 		stdout-path = "/soc/uart@10000000";
 	};
 
 	memory@80000000 {
 		device_type = "memory";
-		reg = <0x00 0x80000000 0x00 0x3fff000>;
+		reg = <0x00 0x80000000 0x00 0x3ffc000>; // Leave 16kB at end for core + DTB
 	};
 
 	cpus {
@@ -56,9 +56,9 @@
 		uart@10000000 {
 			interrupts = <0x0a>;
 			interrupt-parent = <0x03>;
-			clock-frequency = <0x384000>;
+			clock-frequency = <0x1000000>;
 			reg = <0x00 0x10000000 0x00 0x100>;
-			compatible = "ns16550a";
+			compatible = "ns16850";
 		};
 
 		poweroff {

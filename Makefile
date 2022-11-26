@@ -1,5 +1,7 @@
 all :
 
+DTC:=buildroot/output/host/bin/dtc
+
 toolchain_buildrootb : buildroot-2022.02.6
 	cp buildroot-2022.02.6-config buildroot-2022.02.6/.config
 	cp -a custom_kernel_config buildroot-2022.02.6/kernel_config
@@ -32,13 +34,13 @@ toolchain : buildroot
 	#make -C buildroot qemu_riscv32_nommu_virt_minimal_defconfig
 	make -C buildroot
 
-dtbextract :
+dtbextract : $(DTC)
 	# Need 	sudo apt  install device-tree-compiler
 	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -machine dumpdtb=../dtb.dtb && cd ..
-	dtc -I dtb -O dts -o dtb.dts dtb.dtb
+	$(DTC) -I dtb -O dts -o dtb.dts dtb.dtb
 
-minimal.dtb : minimal.dts
-	dtc -I dts -O dtb -o minimal.dtb minimal.dts -S 8192
+minimal.dtb : minimal.dts $(DTC)
+	$(DTC) -I dts -O dtb -o minimal.dtb minimal.dts -S 8192
 
 test_minimaldtb :
 	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -machine dtb=../minimal.dtb -nographic -kernel output/images/Image -bios none
