@@ -40,7 +40,9 @@ uint8_t * ram_image = 0;
 
 int main( int argc, char ** argv )
 {
+	printf( "START\n" );
 	atexit(reset_keyboard);
+	printf( "ATEXIT\n" );
 	int i;
 	long long instct = -1;
 	int show_help = 0;
@@ -82,11 +84,13 @@ int main( int argc, char ** argv )
 			show_help = 1;
 		}
 	}
+	printf( "SHOW\n" );
 	if( show_help || image_file_name == 0 )
 	{
 		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-f [running image]\n\t-b [dtb file]\n\t-c instruction count\n" );
 		return 1;
 	}
+	printf( "ALLOC\n" );
 
 	ram_image = malloc( ram_amt );
 
@@ -159,7 +163,8 @@ restart:
 		int ret = StepInstruction( core, ram_image, 0, elapsedUs );
 		switch( ret )
 		{
-			case 0: usleep(1000); break;
+			case 0: break;
+			case 1: usleep(1000); break;
 			case 0x7777: goto restart;	//syscon code for restart
 			case 0x5555: return 0;		//syscon code for power-off
 			default: printf( "Unknown failure\n" ); break;

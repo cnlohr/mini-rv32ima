@@ -64,7 +64,7 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 
 	// If WFI, don't run processor.
 	if( state->extraflags & 4 )
-		return 0;
+		return 1;
 
 	uint32_t pc = state->pc;
 
@@ -131,7 +131,7 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 			if( rsval >= MINI_RV32_RAM_SIZE-3 )
 			{
 				rsval -= MINIRV32_RAM_IMAGE_OFFSET;
-				if( rsval >= 0x10000000 && rsval < 0x12000000 )  //UART
+				if( rsval >= 0x10000000 && rsval < 0x12000000 )  // UART, CLNT
 				{
 					int byteswaiting;
 					char rxchar = 0;
@@ -150,8 +150,9 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 				}
 				else
 				{
+					printf( "===========LOAD FAULT==============  PC: %08x / OP: %08x / ADDY: %08x // %08x\n", pc, ir, rsval, MINI_RV32_RAM_SIZE );
 					retval = (5+1);
-					rval = rsval + MINIRV32_RAM_IMAGE_OFFSET;
+					rval = rsval;
 				}
 			}
 			else

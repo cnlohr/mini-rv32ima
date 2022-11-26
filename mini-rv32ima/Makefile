@@ -1,12 +1,12 @@
-all : mini-rv32ima mini-rv32ima.rv32ima
+all : mini-rv32ima mini-rv32ima.flt
 
 mini-rv32ima : mini-rv32ima.c mini-rv32ima.h
 	# for debug
 	# gcc -o $@ $< -lm -g -Os -Wall
 	gcc -o $@ $< -lm -Os -ffunction-sections -fdata-sections -Wl,--gc-sections -fwhole-program -s
 
-mini-rv32ima.rv32ima : mini-rv32ima.c mini-rv32ima.h
-	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc -static -march=rv32ima -mabi=ilp32  -o $@ $< -lm -Os -s
+mini-rv32ima.flt : mini-rv32ima.c mini-rv32ima.h
+	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc -march=rv32ima -mabi=ilp32 -o mini-rv32ima.flt -g mini-rv32ima.c -Os -Wl,-elf2flt=-r
 
 testsbi : mini-rv32ima
 	./mini-rv32ima -f ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.bin
@@ -31,5 +31,5 @@ dumpkern :
 #### NOTE: Currently, we're getting stuck in void __noreturn sbi_init(struct sbi_scratch *scratch);  It looks like scratch->next_mode = something broken, because scratch = 0 it appaers?
 
 clean :
-	rm -rf mini-rv32ima mini-rv32ima.rv32ima
+	rm -rf mini-rv32ima mini-rv32ima.flt
 
