@@ -495,7 +495,7 @@ BR2_LINUX_KERNEL_GZIP=y
 # Target packages
 #
 BR2_PACKAGE_BUSYBOX=y
-BR2_PACKAGE_BUSYBOX_CONFIG="package/busybox/busybox-minimal.config"
+BR2_PACKAGE_BUSYBOX_CONFIG="busybox_config"
 BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES=""
 # BR2_PACKAGE_BUSYBOX_SHOW_OTHERS is not set
 
@@ -606,7 +606,7 @@ BR2_PACKAGE_PULSEAUDIO_HAS_ATOMIC=y
 #
 # clinfo needs an OpenCL provider
 #
-# BR2_PACKAGE_COREMARK is not set
+BR2_PACKAGE_COREMARK=y
 
 #
 # dacapo needs OpenJDK

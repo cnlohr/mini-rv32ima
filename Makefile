@@ -30,6 +30,7 @@ toolchain : buildroot
 	#cp riscv_Kconfig buildroot-2022.02.6/output/build/linux-5.15.67/arch/riscv/
 	cp -a custom_kernel_config buildroot/kernel_config
 	cp -a buildroot_config buildroot/.config
+	cp -a busybox_config buildroot/busybox_config
 	#mkdir -p buildroot/board/riscv/nommu/patches
 	#make -C buildroot qemu_riscv32_nommu_virt_minimal_defconfig
 	make -C buildroot
