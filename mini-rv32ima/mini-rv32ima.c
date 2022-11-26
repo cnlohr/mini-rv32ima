@@ -396,33 +396,17 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			break;
 		}
 		case 0b0010011: // Op-immediate
+		case 0b0110011: // Op
 		{
 			uint32_t imm = ir >> 20;
 			imm = imm | (( imm & 0x800 )?0xfffff000:0);
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
-			uint32_t rs2id = (ir >> 20) & 0x1f;
-			// ADDI, SLTI, SLTIU, XORI, ORI, ANDI
-			switch( (ir>>12)&7 )
-			{
-				case 0b000: rval = rs1 + imm; break;
-				case 0b001: rval = rs1 << rs2id; break;
-				case 0b010: rval = (int)rs1 < (int)imm; break;  //signed (SLTI)
-				case 0b011: rval = rs1 < imm; break; //unsigned (SLTIU)
-				case 0b100: rval = rs1 ^ imm; break;
-				case 0b101: rval = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> rs2id ) : (rs1 >> rs2id); break;
-				case 0b110: rval = rs1 | imm; break;
-				case 0b111: rval = rs1 & imm; break;
-			}
-			break;
-		}
-		case 0b0110011: // Op
-		{
-			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
-			uint32_t rs2 = regs[(ir >> 20) & 0x1f];
+			int is_reg = ( ir & 0b100000 );
+			uint32_t rs2 = is_reg ? regs[imm & 0x1f] : imm;
 
-			if( ir & 0x02000000 )
+			if( is_reg && ( ir & 0x02000000 ) )
 			{
-				switch( (ir>>12)&7 ) //RV32M
+				switch( (ir>>12)&7 ) //0x02000000 = RV32M
 				{
 					case 0b000: rval = rs1 * rs2; break; // MUL
 					case 0b001: rval = ((int64_t)rs1 * (int64_t)rs2) >> 32; break; // MULH
@@ -436,9 +420,9 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			}
 			else
 			{
-				switch( (ir>>12)&7 )
+				switch( (ir>>12)&7 ) // These could be either op-immediate or op commands.  Be careful.
 				{
-					case 0b000: rval = (ir & 0x40000000 ) ? ( rs1 - rs2 ) : ( rs1 + rs2 ); break;
+					case 0b000: rval = (is_reg && (ir & 0x40000000) ) ? ( rs1 - rs2 ) : ( rs1 + rs2 ); break;
 					case 0b001: rval = rs1 << rs2; break;
 					case 0b010: rval = (int32_t)rs1 < (int32_t)rs2; break;
 					case 0b011: rval = rs1 < rs2; break;
@@ -450,12 +434,10 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			}
 			break;
 		}
-		case 0b0001111:
-		{
-			rdid = 0; // fencetype = (ir >> 12) & 0b111; We ignore fences in this impl.
+		case 0b0001111: 
+			rdid = 0;   // fencetype = (ir >> 12) & 0b111; We ignore fences in this impl.
 			break;
-		}
-		case 0b1110011:  // Zifencei+Zicsr
+		case 0b1110011: // Zifencei+Zicsr
 		{
 			int rs1imm = (ir >> 15) & 0x1f;
 			uint32_t rs1 = regs[rs1imm];
@@ -549,8 +531,8 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				{
 					if( (ir >> 24) == 0xff )
 					{
-						printf( "Custom opcode for force exit\n" );
-						exit(1);
+						MINIRV32WARN( "Custom opcode for force exit\n" );
+						return -109;
 					}
 					if( csrno == 0 )
 						retval = (state->extraflags & 3) ? (11+1) : (8+1); // 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
@@ -579,8 +561,6 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			else
 			{
 				rval = *((uint32_t*)(image + rs1));
-				
-				INST_DBG( "RV32A: %d: %08x ==> %08x\n", irmid, rs1, rval );
 
 				// Referenced a little bit of https://github.com/franzflasch/riscv_em/blob/master/src/core/core.c
 				int dowrite = 1;
@@ -604,8 +584,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			}
 			break;
 		}
-		default:
-			retval = (2+1);
+		default: retval = (2+1); // Fault: Invalid opcode.
 	}
 
 	if( retval == 0 )
