@@ -37,7 +37,7 @@ dtbextract :
 	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -machine dumpdtb=../dtb.dtb && cd ..
 	dtc -I dtb -O dts -o dtb.dts dtb.dtb
 
-minimal.dtb :
+minimal.dtb : minimal.dts
 	dtc -I dts -O dtb -o minimal.dtb minimal.dts -S 8192
 
 test_minimaldtb :
