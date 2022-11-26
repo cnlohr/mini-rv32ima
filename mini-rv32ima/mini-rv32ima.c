@@ -59,8 +59,6 @@ struct InternalCPUState
 	// Note: only like a few bits are used.  (Machine = 3, User = 0)
 	// Bits 0..1 = privilege.
 	uint32_t extraflags; 
-
-	uint8_t * image;
 };
 
 
@@ -184,7 +182,6 @@ int main( int argc, char ** argv )
 	core.registers[10] = 0x00; //hart ID
 	core.registers[11] = dtb_ptr?(dtb_ptr+ram_image_offset):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
 	core.extraflags |= 3; // Machine-mode.
-	core.image = ram_image;
 
 	// Image is loaded.
 	long long rt;
@@ -205,27 +202,9 @@ int main( int argc, char ** argv )
 int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress )
 {
 	uint32_t * regs = state->registers;
+	int retval = 0;
 
-	// Handle Timer interrupt.
-	if( ( state->timerh > state->timermatchh || ( state->timerh == state->timermatchh && state->timerl > state->timermatchl ) ) && ( state->timermatchh || state->timermatchl )  )
-		state->mip |= 1<<7; //MSIP of MIP // https://stackoverflow.com/a/61916199/2926815  Fire interrupt.
-	else
-		state->mip &= ~(1<<7);
 
-	//state->mstatus & 8 = MIE, & 0x80 = MPIE
-	// On an interrupt, the system moves current MIE into MPIE
-	if( ( state->mip & state->mie & (1<<7) /*mtie*/ ) && ( state->mstatus & 0x8 /*mie*/) )
-	{
-		state->mstatus = (( state->mstatus & 0x08) << 4) | ( (state->extraflags & 3) << 11 );
-		state->extraflags |= 3; // HMM THERE ARE CONDITION WHERE THIS IS NOT TRUE.  XXX CNL XXX  ===>>> ACTUALLY IT IS ALWAYS 3 BUT WE SHOULD PUT OLD STATUS IN???
-		state->mepc = state->pc;
-		state->mtval = 0;
-		state->extraflags &= ~4;
-		state->mcause = 0x80000007; //MSB = "Interrupt 1" 7 = "Machine timer interrupt"
-		state->pc = state->mtvec;
-		return 0;
-	}
-	
 	// Increment both wall-clock and instruction count time.
 	++state->cyclel;
 	if( state->cyclel == 0 ) state->cycleh++;
@@ -236,7 +215,19 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 		if( state->timerl == 0 ) state->timerh++;
 	}
 
-	// If WFI, don't process.
+
+	// Handle Timer interrupt.
+	if( ( state->timerh > state->timermatchh || ( state->timerh == state->timermatchh && state->timerl > state->timermatchl ) ) && ( state->timermatchh || state->timermatchl )  )
+	{
+		state->extraflags &= ~4; // Clear WFI
+		state->mip |= 1<<7; //MSIP of MIP // https://stackoverflow.com/a/61916199/2926815  Fire interrupt.
+	}
+	else
+	{
+		state->mip &= ~(1<<7);
+	}
+
+	// If WFI, don't run processor.
 	if( state->extraflags & 4 )
 		return 0;
 
@@ -250,7 +241,6 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	}
 
 	uint32_t ir = *(uint32_t*)(ram_image + ofs_pc);
-	int retval = 0;
 
 	int rdid = (ir >> 7) & 0x1f;
 	int rval = 0;
@@ -439,13 +429,14 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			break;
 		case 0b1110011: // Zifencei+Zicsr
 		{
-			int rs1imm = (ir >> 15) & 0x1f;
-			uint32_t rs1 = regs[rs1imm];
 			uint32_t csrno = ir >> 20;
 			int microop = ( ir >> 12 ) & 0b111;
-			uint32_t writeval = rs1;
 			if( (microop & 3) ) // It's a Zicsr function.
 			{
+				int rs1imm = (ir >> 15) & 0x1f;
+				uint32_t rs1 = regs[rs1imm];
+				uint32_t writeval = rs1;
+
 				// https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
 				// Generally, support for Zicsr
 				switch( csrno )
@@ -484,7 +475,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				switch( csrno )
 				{
 				case 0x137: // Special, side-channel printf.
-					MINIRV32WARN( "SIDE-CHANNEL-DEBUG: %s\n", state->image + writeval - ram_image_offset );
+					MINIRV32WARN( "SIDE-CHANNEL-DEBUG: %s\n", image + writeval - ram_image_offset );
 					break;
 				case 0x138: // Special, side-channel printf.
 					MINIRV32WARN( "SIDE-CHANNEL-DEBUG: %08x\n", writeval );
@@ -511,11 +502,10 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			else if( microop == 0b000 ) // "SYSTEM"
 			{
 				rdid = 0;
-				//ECALL/EBREAK/WFI
-				if( csrno == 0x105 )
+				if( csrno == 0x105 ) //WFI
 				{
 					state->mstatus |= 8;
-					state->extraflags |= 4;// WFI, Ignore.
+					state->extraflags |= 4;
 				}
 				else if( ( ( csrno & 0xff ) == 0x02 ) )  // MRET
 				{
@@ -527,17 +517,16 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					state->extraflags = (state->extraflags & ~3) | ((startmstatus >> 11) & 3);
 					pc = state->mepc-4;
 				}
-				else //EBREAK
+				else
 				{
 					if( (ir >> 24) == 0xff )
 					{
-						MINIRV32WARN( "Custom opcode for force exit\n" );
-						return -109;
+						retval = -222;
 					}
 					if( csrno == 0 )
-						retval = (state->extraflags & 3) ? (11+1) : (8+1); // 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
+						retval = (state->extraflags & 3) ? (11+1) : (8+1); // ECALL; 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
 					else
-						retval = (3+1); // 3 = "Breakpoint"
+						retval = (3+1); // EBREAK 3 = "Breakpoint"
 				}
 			}
 			else
@@ -590,18 +579,37 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	if( retval == 0 )
 	{
 		if( rdid ) regs[rdid] = rval;
+
+		// Check timer interrupt.
+		if( ( state->mip & state->mie & (1<<7) /*mtie*/ ) && ( state->mstatus & 0x8 /*mie*/) )
+		{
+			retval = 0x107;
+			pc += 4;
+		}
 	}
-	else if( retval > 0 )
+
+	if( retval > 0 )
 	{
-		state->mcause = retval - 1;
-		state->mepc = pc; //XXX TRICKY: The kernel advances mepc
-		state->mtval = pc;
+		// Handle traps.
+		if( retval & 0x100 )
+		{
+			state->mcause = retval - 0x100 + 0x80000000;
+			state->mtval = 0;
+		}
+		else
+		{
+			state->mcause = retval - 1;
+			state->mtval = pc;
+		}
+		state->mepc = pc; //XXX TRICKY: The kernel advances mepc automatically.
+		//state->mstatus & 8 = MIE, & 0x80 = MPIE
+		// On an interrupt, the system moves current MIE into MPIE
 		state->mstatus = (( state->mstatus & 0x08) << 4) | ((state->extraflags&3) << 11);
 		state->extraflags = state->extraflags | 3;
 		pc = (state->mtvec - 4);
 		retval = 0;
 	}
-	else
+	else if( retval < 0 )
 	{
 		fprintf( stderr, "Error PC: %08x / IR: %08x\n", pc, ir );
 		return -1;
@@ -638,5 +646,5 @@ uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber )
 	else
 	{
 		return ret;
-	}	
+	}
 }
