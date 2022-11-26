@@ -202,8 +202,7 @@ int main( int argc, char ** argv )
 int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress )
 {
 	uint32_t * regs = state->registers;
-	int retval = 0;
-
+	uint32_t retval = 0; // If positive, is a trap or interrupt.  If negative, is fatal error.
 
 	// Increment both wall-clock and instruction count time.
 	++state->cyclel;
@@ -234,11 +233,6 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	uint32_t pc = state->pc;
 
 	uint32_t ofs_pc = pc - ram_image_offset;
-	if( ofs_pc & 3 || ofs_pc >= ram_amt )
-	{
-		fprintf( stderr, "Error: CPU PC invalid: %08x\n", state->pc );
-		return -1;
-	}
 
 	uint32_t ir = *(uint32_t*)(ram_image + ofs_pc);
 
@@ -519,14 +513,12 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				}
 				else
 				{
-					if( (ir >> 24) == 0xff )
+					switch( csrno )
 					{
-						retval = -222;
+					case 0: retval = (state->extraflags & 3) ? (11+1) : (8+1); break; // ECALL; 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
+					case 1:	retval = (3+1); break; // EBREAK 3 = "Breakpoint"
+					default: retval = (2+1); break; // Illegal opcode.
 					}
-					if( csrno == 0 )
-						retval = (state->extraflags & 3) ? (11+1) : (8+1); // ECALL; 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
-					else
-						retval = (3+1); // EBREAK 3 = "Breakpoint"
 				}
 			}
 			else
@@ -580,20 +572,24 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	{
 		if( rdid ) regs[rdid] = rval;
 
-		// Check timer interrupt.
-		if( ( state->mip & state->mie & (1<<7) /*mtie*/ ) && ( state->mstatus & 0x8 /*mie*/) )
+		// Handle misaligned PC or PC access faults.
+		if( pc & 3 || pc - ram_image_offset >= ram_amt )
 		{
-			retval = 0x107;
+			retval = (pc & 3)?( 1+0 ) : (1+1);
+		}
+		else if( ( state->mip & (1<<7) ) && ( state->mie & (1<<7) /*mtie*/ ) && ( state->mstatus & 0x8 /*mie*/) )
+		{
+			retval = 0x80000007;
 			pc += 4;
 		}
 	}
 
+	// Handle traps and interrupts.
 	if( retval > 0 )
 	{
-		// Handle traps.
-		if( retval & 0x100 )
+		if( retval & 0x80000000 ) // If prefixed with 0x100, it's an interrupt, not a trap.
 		{
-			state->mcause = retval - 0x100 + 0x80000000;
+			state->mcause = retval;
 			state->mtval = 0;
 		}
 		else
@@ -608,11 +604,6 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 		state->extraflags = state->extraflags | 3;
 		pc = (state->mtvec - 4);
 		retval = 0;
-	}
-	else if( retval < 0 )
-	{
-		fprintf( stderr, "Error PC: %08x / IR: %08x\n", pc, ir );
-		return -1;
 	}
 
 	state->pc = pc + 4;
