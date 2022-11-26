@@ -5,6 +5,7 @@
 #include <math.h>
 #include <sys/ioctl.h>
 #include <termios.h>
+#include <unistd.h>
 
 //#define DEBUG_INSTRUCTIONS
 #ifdef DEBUG_INSTRUCTIONS
@@ -236,7 +237,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 	uint32_t ir = *(uint32_t*)(ram_image + ofs_pc);
 
 	int rdid = (ir >> 7) & 0x1f;
-	int rval = 0;
+	uint32_t rval = 0;
 
 	switch( ir & 0x7f )
 	{
@@ -297,11 +298,13 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				if( rsval >= 0x10000000 && rsval < 0x10000008 )  //UART
 				{
 					int byteswaiting;
+					char rxchar = 0;
 					ioctl(0, FIONREAD, &byteswaiting);
 					if( rsval == 0x10000005 )
 						rval = 0x60 | !!byteswaiting;
 					else if( rsval == 0x10000000 && byteswaiting )
-						rval = getchar();
+						if( read(fileno(stdin), (char*)&rxchar, 1) > 0 )
+							rval = rxchar;
 				}
 				else if( rsval >= 0x02000000 && rsval < 0x02010000 ) //CLNT
 				{
@@ -313,6 +316,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 				else
 				{
 					retval = (5+1);
+					rval = rsval + ram_image_offset;
 				}
 			}
 			else
@@ -362,7 +366,10 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					// Other CLNT access is ignored.
 				}
 				else
+				{
 					retval = (7+1); // Store access fault.
+					rval = addy + ram_image_offset;
+				}
 			}
 			else
 			{
@@ -374,7 +381,6 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 					case 0b010: *((uint32_t*)(image + addy)) = rs2; break;
 					default: retval = (2+1);
 				}
-				INST_DBG( "STORE [%08x] = %08x [%x]\n", addy, rs2, ( ir >> 12 ) & 0x7 );
 			}
 			break;
 		}
@@ -537,6 +543,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 			if( rs1 >= ram_amt-3 )
 			{
 				retval = (7+1); //Store/AMO access fault
+				rval = rs1 + ram_image_offset;
 			}
 			else
 			{
@@ -594,7 +601,7 @@ int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t 
 		else
 		{
 			state->mcause = retval - 1;
-			state->mtval = pc;
+			state->mtval = (retval > 5 && retval <= 8)? rval : pc;
 		}
 		state->mepc = pc; //XXX TRICKY: The kernel advances mepc automatically.
 		//state->mstatus & 8 = MIE, & 0x80 = MPIE

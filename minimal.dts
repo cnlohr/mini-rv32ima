@@ -7,8 +7,8 @@
 	model = "riscv-minimal-nommu,qemu";
 
 	chosen {
-		bootargs = "ro con=uart8250,mmio,0x10000000,1000000 console=ttyS0";
-		stdout-path = "/soc/uart@10000000";
+		bootargs = "ro earlycon=uart8250,mmio,0x10000000,1000000 console=ttyS0";
+		/* stdout-path = "/soc/uart@10000000"; */
 	};
 
 	memory@80000000 {
@@ -54,8 +54,6 @@
 		ranges;
 
 		uart@10000000 {
-			interrupts = <0x0a>;
-			interrupt-parent = <0x03>;
 			clock-frequency = <0x1000000>;
 			reg = <0x00 0x10000000 0x00 0x100>;
 			compatible = "ns16850";

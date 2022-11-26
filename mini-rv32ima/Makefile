@@ -1,7 +1,7 @@
 all : mini-rv32ima
 
 mini-rv32ima : mini-rv32ima.c
-	gcc -o $@ $^ -lm -g -Os -Wall
+	gcc -o $@ $^ -lm -g -Os -Wall -lcurses
 
 testsbi : mini-rv32ima
 	./mini-rv32ima -f ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.bin
