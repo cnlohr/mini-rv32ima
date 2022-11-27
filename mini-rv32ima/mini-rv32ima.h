@@ -38,6 +38,8 @@ struct InternalCPUState
 	uint32_t extraflags; 
 };
 
+static uint32_t PCList[256*18];
+static uint8_t PCH;
 
 MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs )
 {
@@ -71,6 +73,17 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 	uint32_t ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
 
 	uint32_t ir = *(uint32_t*)(image + ofs_pc);
+
+
+	PCList[PCH*18] = pc;
+	PCList[PCH*18+1] = ir;
+	int i;
+	for( i = 0; i < 16; i++ )
+	{
+		PCList[PCH*18+i+2] = regs[i];
+	}
+
+	PCH++;
 
 	int rdid = (ir >> 7) & 0x1f;
 	uint32_t rval = 0;
@@ -151,6 +164,23 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 				else
 				{
 					printf( "===========LOAD FAULT==============  PC: %08x / OP: %08x / ADDY: %08x // %08x\n", pc, ir, rsval, MINI_RV32_RAM_SIZE );
+
+	for( uint8_t pch = PCH+1; pch != PCH; pch++ )
+	{
+		printf( "%08x/%08x ", PCList[pch*18],PCList[pch*18+1] );
+		int j;
+		for(j = 0; j < 16; j++ )
+			printf( "%d:%08x ", j, PCList[pch*18+j+2] );
+		printf( "\n" );
+	}
+
+
+					int k;
+					for( k = pc-0x20; k < pc+0x20; k+=4 )
+					{
+						printf( "%08x: %08x\n", k, *(uint32_t*)(&image[k-0x80000000]) );
+					}
+
 					retval = (5+1);
 					rval = rsval;
 				}
@@ -437,8 +467,11 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 		//state->mstatus & 8 = MIE, & 0x80 = MPIE
 		// On an interrupt, the system moves current MIE into MPIE
 		state->mstatus = (( state->mstatus & 0x08) << 4) | ((state->extraflags&3) << 11);
-		state->extraflags = state->extraflags | 3;
 		pc = (state->mtvec - 4);
+
+		// XXX TODO: Do we actually want to check here?
+		if( !(retval & 0x80000000) )
+			state->extraflags = state->extraflags | 3;
 		retval = 0;
 	}
 
