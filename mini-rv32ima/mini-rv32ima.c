@@ -40,9 +40,7 @@ uint8_t * ram_image = 0;
 
 int main( int argc, char ** argv )
 {
-	printf( "START\n" );
 	atexit(reset_keyboard);
-	printf( "ATEXIT\n" );
 	int i;
 	long long instct = -1;
 	int show_help = 0;
@@ -84,13 +82,12 @@ int main( int argc, char ** argv )
 			show_help = 1;
 		}
 	}
-	printf( "SHOW\n" );
+
 	if( show_help || image_file_name == 0 )
 	{
-		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-f [running image]\n\t-b [dtb file]\n\t-c instruction count\n" );
+		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file]\n\t-c instruction count\n" );
 		return 1;
 	}
-	printf( "ALLOC\n" );
 
 	ram_image = malloc( ram_amt );
 
@@ -184,12 +181,12 @@ static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumbe
 	int radix = 10;
 	if( number[0] == '0' )
 	{
-		number++;
-		char nc = number[0];
+		char nc = number[1];
+		number+=2;
 		if( nc == 0 ) return 0;
 		else if( nc == 'x' ) radix = 16;
 		else if( nc == 'b' ) radix = 2;
-		else radix = 8;
+		else { number--; radix = 8; }
 	}
 	char * endptr;
 	uint64_t ret = strtoll( number, &endptr, radix );

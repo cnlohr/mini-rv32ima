@@ -7,12 +7,14 @@ mini-rv32ima : mini-rv32ima.c mini-rv32ima.h
 
 mini-rv32ima.flt : mini-rv32ima.c mini-rv32ima.h
 	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc  -march=rv32ima -mabi=ilp32 -fPIC $< -Wl,-elf2flt=-r -o $@
+	## Deply with make clean all && cp mini-rv32ima.flt* ../buildroot/output/target/root/  && make -C .. toolchain && make testkern
+
 
 testsbi : mini-rv32ima
 	./mini-rv32ima -f ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.bin
 
 testkern : mini-rv32ima
-	./mini-rv32ima -b ../minimal.dtb -f ../buildroot/output/images/Image
+	./mini-rv32ima -m 0x10000000 -b ../minimal.dtb -f ../buildroot/output/images/Image
 
 dumpsbi : 
 	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.elf >fw_payload.S
