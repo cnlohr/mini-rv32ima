@@ -8,7 +8,7 @@
 #include <unistd.h>
 
 
-uint32_t ram_amt = 64*1024*1024;
+uint32_t ram_amt = 128*1024*1024;
 
 //#define DEBUG_INSTRUCTIONS
 #ifdef DEBUG_INSTRUCTIONS

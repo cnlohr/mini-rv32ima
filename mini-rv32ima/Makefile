@@ -6,7 +6,7 @@ mini-rv32ima : mini-rv32ima.c mini-rv32ima.h
 	gcc -o $@ $< -lm -Os -ffunction-sections -fdata-sections -Wl,--gc-sections -fwhole-program -s
 
 mini-rv32ima.flt : mini-rv32ima.c mini-rv32ima.h
-	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc -march=rv32ima -mabi=ilp32 -o mini-rv32ima.flt -g mini-rv32ima.c -Os -Wl,-elf2flt=-r
+	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc  -march=rv32ima -mabi=ilp32 -fPIC $< -Wl,-elf2flt=-r -o $@
 
 testsbi : mini-rv32ima
 	./mini-rv32ima -f ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.bin
