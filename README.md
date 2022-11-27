@@ -10,18 +10,19 @@ I'm working on a really really simple C Risc-V emultor. So simple it doesn't eve
  * Understand the *most simplistic* system you can run Linux on and trying to push that boundary.
 
 What this is: A single-file-header, [mini-rv32ima.h](https://github.com/cnlohr/riscv_emufun/blob/master/mini-rv32ima/mini-rv32ima.h), in the [STB Style library](https://github.com/nothings/stb) that:
- * Implements a RISC-V rv32ima/Zifencei+Zicsr (and partial su), with CLINT and MMIO.
- * Is about 400 lines of actual code.
- * Has no dependencies, not even libc.
- * Is VERY EASY TOHACK.  So you can easily add CSRs, instructions, MMIO, etc!
- * Is reasonably performant. (~450 coremark on my laptop)
- * Is human-readable and in basic C code.
- * Is "incomplete" in that it didn't implement the tons of the spec that Linux doesn't (and you shouldn't) use.
+ * Implements a RISC-V **rv32ima/Zifencei+Zicsr** (and partial su), with CLINT and MMIO.
+ * Is about **400 lines** of actual code.
+ * Has **no dependencies**, not even libc.
+ * Is **VERY EASY TOHACK**.  So you can easily add CSRs, instructions, MMIO, etc!
+ * Is pretty **performant**. (~450 coremark on my laptop, about 1/2 the speed of QEMU)
+ * Is human-readable and in **basic C** code.
+ * Is "**incomplete**" in that it didn't implement the tons of the spec that Linux doesn't (and you shouldn't) use.
+ * Is tivially **embeddable** in applications.
 
 It has a [demo wrapper](https://github.com/cnlohr/riscv_emufun/blob/master/mini-rv32ima/mini-rv32ima.c) that:
  * Implements a CLI, SYSCON, UART, DTB and Kernel image loading.
- * And it only around 250 lines of code, itself.
- * Compiles down to a ~18kB executable and only relies on libc.
+ * And it only around **250 lines** of code, itself.
+ * Compiles down to a **~18kB executable** and only relies on libc.
 
 Just see the `mini-rv32ima` folder.
 
@@ -30,8 +31,8 @@ It's "fully functional" now in that I can run Linux, apps, etc.  Compile flat bi
 To test this, you will need a Linux box with `git build-essential` and whatever other requirements are in place for [buildroot](https://buildroot.org/).
  * Clone this repo.
  * `make everything`
- * About 15 minutes.  (Or 4+ hours if you're on [Windows Subsytem for Linux 2](https://github.com/microsoft/WSL/issues/4197)
- * And you should be dropped into a shell.
+ * About 15 minutes.  (Or 4+ hours if you're on [Windows Subsytem for Linux 2](https://github.com/microsoft/WSL/issues/4197))
+ * And you should be dropped into a Linux busybox shell with some little tools that were compiled here.
 
 ...And you can almost run Linux in Linux in Linux (though not quite yet).
 
