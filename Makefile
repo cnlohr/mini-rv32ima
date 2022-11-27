@@ -23,7 +23,7 @@ testbare :
 	make -C mini-rv32ima testbare
 
 test_with_qemu :
-	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -machine dtb=../minimal.dtb -nographic -kernel output/images/Image -bios none
+	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none #-machine dtb=../minimal.dtb 
 
 ##################################################################
 # For Debugging 
@@ -41,8 +41,8 @@ test_with_qemu :
 #	cp riscv_Kconfig buildroot-2022.02.6/output/build/linux-5.15.67/arch/riscv/
 #	make -C buildroot-2022.02.6
 
-minimal.dtb : minimal.dts $(DTC)
-	$(DTC) -I dts -O dtb -o minimal.dtb minimal.dts -S 2048
+configs/minimal.dtb : configs/minimal.dts $(DTC)
+	$(DTC) -I dts -O dtb -o $@ $< -S 2048
 
 # Trick for extracting the DTB from 
 dtbextract : $(DTC)

@@ -36,7 +36,7 @@ I'm working on a really really simple C Risc-V emultor. So simple it doesn't eve
 To test this, you will need a Linux box with `git build-essential` and whatever other requirements are in place for [buildroot](https://buildroot.org/).
  * Clone this repo.
  * `make everything`
- * About 15 minutes.  (Or 4+ hours if you're on [Windows Subsytem for Linux 2](https://github.com/microsoft/WSL/issues/4197))
+ * About 20 minutes.  (Or 4+ hours if you're on [Windows Subsytem for Linux 2](https://github.com/microsoft/WSL/issues/4197))
  * And you should be dropped into a Linux busybox shell with some little tools that were compiled here.
 
 ...And you can almost run Linux in Linux in Linux (though not quite yet).
@@ -59,6 +59,8 @@ Everything else: Contact us on my Discord: https://discord.com/invite/CCeyWyZ
  * Maybe run this in a pixelshader too!
  * Get opensbi working with this.
  * Be able to "embed" rv32 emulators in random projects.
+ * Can I use early console to be a full system console?
+ * Can I increase the maximum contiguous memory allocatable?
 
 ## Special Thanks
  * For @regymm and their [patches to buildroot](https://github.com/regymm/buildroot) and help!
@@ -93,6 +95,8 @@ sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
  * Being able to run it elsewhere.
  * Mention assembly language. (Baremetal)
  * Talk about Makefiles.
+ * Mention license and file at the end - encourage others.
+
 
 ## WSL notes.
  * You can't have spaces in your paths.  Try this:
@@ -125,3 +129,6 @@ export CROSS_COMPILE=riscv64-unknown-elf-
 export PLATFORM_RISCV_XLEN=32
 make
 ```
+
+### Extra links
+ * Clear outline of CSRs: https://five-embeddev.com/riscv-isa-manual/latest/priv-csrs.html
