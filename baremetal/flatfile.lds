@@ -5,43 +5,14 @@ ENTRY(_start)
 
 SECTIONS
 {
-	. = 0x00;
-
+	. = 0x80000000;
+/*
 	.header : ALIGN( 16 )
 	{
-		/* Registers */
-		LONG( 0 ) /* Zero */
-		LONG( 0 ) /* Return Address */
-		LONG( _sstack ) /* Stack Pointer */
-		LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-
-		/* CPU State */
-		LONG( _start ) /* PC */
-
-		/* CSRs */
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 )
-
-		/* Reserved */
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 ) LONG( 0 ) LONG( 0 )
-		LONG( 0 ) LONG( 0 )
-
-		/* UART 8250 */
 		LONG( 0 )
 		LONG( 0 )
 	}
-
+*/
 	.text : ALIGN(16) {
 		__TEXT_BEGIN__ = .;
 		*(.initial_jump)
@@ -105,8 +76,9 @@ SECTIONS
 		_sstack = .;
 	}
 
-	PROVIDE( videodata = 0xb0000 );
-	PROVIDE( uart8250 = 152 );
+	PROVIDE( SYSCON = 0x11100000 );
+	PROVIDE( TIMERL = 0x1100bff8 );
+	PROVIDE( TIMERH = 0x1100bffc );
 }
 
 

@@ -8,6 +8,7 @@ I'm working on a really really simple C Risc-V emultor. So simple it doesn't eve
  * Being further inspired by @pimaker's amazing work on [Running Linux in a Pixel Shader](https://blog.pimaker.at/texts/rvc1/) and having the sneaking suspicion performance could be even better!
  * Hoping to port it to some weird places.
  * Understand the *most simplistic* system you can run Linux on and trying to push that boundary.
+ * Continue to include my [education of people about assembly language].(https://www.youtube.com/watch?v=Gelf0AyVGy4)
 
 What this is: A single-file-header, [mini-rv32ima.h](https://github.com/cnlohr/riscv_emufun/blob/master/mini-rv32ima/mini-rv32ima.h), in the [STB Style library](https://github.com/nothings/stb) that:
  * Implements a RISC-V **rv32ima/Zifencei+Zicsr** (and partial su), with CLINT and MMIO.
@@ -36,11 +37,6 @@ To test this, you will need a Linux box with `git build-essential` and whatever 
 
 ...And you can almost run Linux in Linux in Linux (though not quite yet).
 
-## Special Thanks
- * For @regymm and their [patches to buildroot](https://github.com/regymm/buildroot) and help!
- * Buildroot (For being so helpful).
- * @vowstar and their team working on [k210-linux-nommu](https://github.com/vowstar/k210-linux-nommu).
-
 ## Questions?
  * Why not rv64?
    * Because then I can't run it as easily in a pixel shader if I ever hope to.
@@ -53,13 +49,22 @@ To test this, you will need a Linux box with `git build-essential` and whatever 
 
 Everything else: Contact us on my Discord: https://discord.com/invite/CCeyWyZ
 
-## Personal Notes
+## Special Thanks
+ * For @regymm and their [patches to buildroot](https://github.com/regymm/buildroot) and help!
+ * Buildroot (For being so helpful).
+ * @vowstar and their team working on [k210-linux-nommu](https://github.com/vowstar/k210-linux-nommu).
 
-## Processor type
+## Hopeful accomplishments?
+ * Further drive down needed features to run Linux.
+   * Remove need for RV32A extension on systems with only one CPU.
+   * Support for relocatable ELF executables.
+   * Add support for an unreal UART.  One that's **much** simpler than the current 8250 driver.
+ * Maybe run this in a pixelshader too!
+ * Be able to "embed" rv32 emulators in random projects.
 
 ## Prereq
 
-For bare metal (Not used right now)
+For non-buildroot, bare metal (Not used right now)
 ```
 sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
 ```
@@ -67,17 +72,9 @@ sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
 ## QEMU Test
 
 ```
-sudo apt install qemu-system-misc
-```
-
-```
 output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0
 output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -machine dumpdtb=../dtb.dtb
 ```
-
-## Running from INITRD instead of DISK
- * In buildroot: Filesystem Images, check cpio, no compression.
- * In kernel: 
 
 ## Building Tests
 
@@ -120,6 +117,7 @@ make
  * MMIO
  * Background on RV32IMA
  * Being able to run it elsewhere.
-
+ * Mention assembly language.
+ * Talk about Makefiles.
 
 

@@ -1,30 +1,30 @@
-TARGETS:=test.elf test.bin test.debug.txt
+PROJECT:=baremetal
+TARGETS:=$(PROJECT).elf $(PROJECT).bin $(PROJECT).debug.txt
 
 all : $(TARGETS)
 
 #PREFIX:=riscv64-unknown-elf-
 #CFLAGS:=-I/usr/include
 
-PREFIX:=../buildroot-2022.02.6/output/host/bin/riscv32-buildroot-linux-gnu-
+PREFIX:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-
 CFLAGS:=-fno-stack-protector
 CFLAGS+=-static-libgcc -ffunction-sections -fdata-sections  -Wl,-static -fdata-sections -ffunction-sections -Wl,--gc-sections
-
 CFLAGS+=-g -Os -march=rv32ima -mabi=ilp32 -static
 LDFLAGS:= -T flatfile.lds -nostdlib
 
-test.elf : test.c
+$(PROJECT).elf : $(PROJECT).c $(PROJECT).S
 	$(PREFIX)gcc -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
-test.debug.txt : test.elf
+$(PROJECT).debug.txt : $(PROJECT).elf
 	$(PREFIX)objdump -t $^ > $@
 	$(PREFIX)objdump -S $^ >> $@
 
-test.bin : test.elf
-	$(PREFIX)objcopy test.elf -O binary test.bin
+$(PROJECT).bin : $(PROJECT).elf
+	$(PREFIX)objcopy $^ -O binary $@
 
-postlist : 
-	
+test : $(PROJECT).bin
+	../mini-rv32ima/mini-rv32ima -f $<
 
 clean :
-	rm -rf $(TARGETS)  test.debug.txt
+	rm -rf $(TARGETS)
 

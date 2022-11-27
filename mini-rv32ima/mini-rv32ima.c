@@ -1,3 +1,5 @@
+// Copyright 2022 Charles Lohr, you may use this file or any portions herein under any of the BSD, MIT, or CC0 licenses.
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -7,12 +9,12 @@
 #include <termios.h>
 #include <unistd.h>
 
-
 uint32_t ram_amt = 64*1024*1024;
 
 static uint32_t HandleException( uint32_t ir, uint32_t retval );
 static uint32_t HandleControlStore( uint32_t addy, uint32_t val );
 static uint32_t HandleControlLoad( uint32_t addy );
+static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value );
 
 #define MINIRV32WARN( x... ) printf( x );
 #define MINIRV32_DECORATE  static
@@ -21,6 +23,7 @@ static uint32_t HandleControlLoad( uint32_t addy );
 #define MINIRV32_POSTEXEC( pc, ir, retval ) { if( retval > 0 ) retval = HandleException( ir, retval ); }
 #define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( HandleControlStore( addy, val ) ) return val;
 #define MINIRV32_HANDLE_MEM_LOAD_CONTROL( addy, rval ) rval = HandleControlLoad( addy );
+#define MINIRV32_OTHERCSR_WRITE( csrno, value ) HandleOtherCSRWrite( image, csrno, value );
 
 #include "mini-rv32ima.h"
 
@@ -38,6 +41,7 @@ int main( int argc, char ** argv )
 	int i;
 	long long instct = -1;
 	int show_help = 0;
+	int single_step = 0;
 	int dtb_ptr = 0;
 	const char * image_file_name = 0;
 	const char * dtb_file_name = 0;
@@ -66,6 +70,9 @@ int main( int argc, char ** argv )
 				i++;
 				dtb_file_name = (i<argc)?argv[i]:0;
 				break;
+			case 's':
+				single_step = 1;
+				break;
 			default:
 				show_help = 1;
 				break;
@@ -79,7 +86,7 @@ int main( int argc, char ** argv )
 
 	if( show_help || image_file_name == 0 )
 	{
-		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file]\n\t-c instruction count\n" );
+		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file]\n\t-c instruction count\n\t-s single step with full processor state\n" );
 		return 1;
 	}
 
@@ -141,22 +148,45 @@ restart:
 	// The core lives at the end of RAM.
 	struct MiniRV32IMAState * core = (struct MiniRV32IMAState *)(ram_image + ram_amt - sizeof( struct MiniRV32IMAState ));
 	core->pc = MINIRV32_RAM_IMAGE_OFFSET;
-	core->registers[10] = 0x00; //hart ID
-	core->registers[11] = dtb_ptr?(dtb_ptr+MINIRV32_RAM_IMAGE_OFFSET):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
+	core->regs[10] = 0x00; //hart ID
+	core->regs[11] = dtb_ptr?(dtb_ptr+MINIRV32_RAM_IMAGE_OFFSET):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
 	core->extraflags |= 3; // Machine-mode.
 
 	// Image is loaded.
 	uint64_t rt;
 	uint64_t lastTime = GetTimeMicroseconds();
-	for( rt = 0; rt < instct || instct < 0; rt++ )
+	int instrs_per_flip = single_step?1:1024;
+	for( rt = 0; rt < instct/instrs_per_flip+1 || instct < 0; rt++ )
 	{
 		uint32_t elapsedUs = 0;
-		if( ( rt & 0x100 ) == 0 )
+		elapsedUs = GetTimeMicroseconds() - lastTime;
+		lastTime += elapsedUs;
+
+		if( single_step )
 		{
-			elapsedUs = GetTimeMicroseconds() - lastTime;
-			lastTime += elapsedUs;
+			uint32_t pc = core->pc;
+			uint32_t pc_offset = pc - MINIRV32_RAM_IMAGE_OFFSET;
+			uint32_t ir = 0;
+			printf( "PC: %08x ", pc );
+			if( pc_offset < MINIRV32_RAM_IMAGE_OFFSET-3 )
+			{
+				ir = *((uint32_t*)(&((uint8_t*)ram_image)[pc_offset]));
+				printf( "[0x%08x] ", ir ); 
+			}
+			else
+			{
+				printf( "[xxxxxxxxxx] " ); 
+			}
+			uint32_t * regs = core->regs;
+			printf( "Z:%08x ra:%08x sp:%08x gp:%08x tp:%08x t0:%08x t1:%08x t2:%08x s0:%08x s1:%08x a0:%08x a1:%08x a2:%08x a3:%08x a4:%08x a5:%08x ",
+				regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+				regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15] );
+			printf( "a6:%08x a7:%08x s2:%08x s3:%08x s4:%08x s5:%08x s6:%08x s7:%08x s8:%08x s9:%08x s10:%08x s11:%08x t3:%08x t4:%08x t5:%08x t6:%08x\n",
+				regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23],
+				regs[24], regs[25], regs[26], regs[27], regs[28], regs[29], regs[30], regs[31] );
 		}
-		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs, 1024 ); // Execute upto 1024 cycles before breaking out.
+
+		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs, instrs_per_flip ); // Execute upto 1024 cycles before breaking out.
 		switch( ret )
 		{
 			case 0: break;
@@ -168,10 +198,6 @@ restart:
 	}
 }
 
-//		printf( "%d %08x [%08x] Z:%08x A1:%08x %08x %08x %08x %08x %08x %08x // %08x %08x %08x %08x %08x %08x %08x %08x//x16: %08x %08x %08x %08x %08x %08x %08x %08x\n", retval, pc, ir,
-//			regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
-//			regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15],
-//			regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23] );
 
 static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber )
 {
@@ -268,5 +294,37 @@ static uint32_t HandleControlLoad( uint32_t addy )
 			return rxchar;
 	}
 	return 0;
+}
+
+static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value )
+{
+	if( csrno == 0x136 )
+	{
+		printf( "%d", value ); fflush( stdout );
+	}
+	if( csrno == 0x137 )
+	{
+		printf( "%08x", value ); fflush( stdout );
+	}
+	else if( csrno == 0x138 )
+	{
+		//Print "string"
+		uint32_t ptrstart = value - MINIRV32_RAM_IMAGE_OFFSET;
+		uint32_t ptrend = ptrstart;
+		while( ptrend < ram_amt )
+		{
+			if( image[ptrend] == 0 ) break;
+			ptrend++;
+		}
+		if( ptrend != ptrstart )
+		{
+			int ret = write( fileno(stdout), image + ptrstart, ptrend - ptrstart );
+			ret = ret;
+		}
+		else
+		{
+			printf( "DEBUG PASSED INVALID PTR (%08x)\n", value );
+		}
+	}
 }
 

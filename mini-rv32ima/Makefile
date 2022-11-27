@@ -12,6 +12,9 @@ mini-rv32ima.flt : mini-rv32ima.c mini-rv32ima.h
 testkern : mini-rv32ima
 	./mini-rv32ima -b sixtyfourmb.dtb -f ../buildroot/output/images/Image
 
+testbare : mini-rv32ima
+	./mini-rv32ima -c 100 -f ../baremetal/baremetal.bin
+
 # For dumping specific binaries and info.
 
 # SBI is not currently working
