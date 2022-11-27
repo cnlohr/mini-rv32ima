@@ -58,12 +58,13 @@ Everything else: Contact us on my Discord: https://discord.com/invite/CCeyWyZ
  * Buildroot (For being so helpful).
  * @vowstar and their team working on [k210-linux-nommu](https://github.com/vowstar/k210-linux-nommu).
 
-## Hopeful accomplishments?
+## Hopeful goals?
  * Further drive down needed features to run Linux.
    * Remove need for RV32A extension on systems with only one CPU.
    * Support for relocatable ELF executables.
    * Add support for an unreal UART.  One that's **much** simpler than the current 8250 driver.
  * Maybe run this in a pixelshader too!
+ * Get opensbi working with this.
  * Be able to "embed" rv32 emulators in random projects.
 
 ## Prereq
@@ -123,6 +124,11 @@ make
  * Being able to run it elsewhere.
  * Mention assembly language. (Baremetal)
  * Talk about Makefiles.
+
+## WSL notes.
+ * You can't have spaces in your paths.  Try this:
+	`PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/mnt/c/Windows/system32:/snap/bin`
+
 
 
 
