@@ -5,8 +5,7 @@ all : $(EXE)
 CC:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc
 OBJDUMP:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump
 
-
-CFLAGS?=-march=rv32ima -mabi=ilp32 -fPIC -Os -s -static
+CFLAGS?=-march=rv32ima -mabi=ilp32 -fPIE -pie -Os -s -static
 LDFLAGS?=-Wl,-elf2flt="-r -s 32768"
 
 APPFOLDER:=coremark-1.01

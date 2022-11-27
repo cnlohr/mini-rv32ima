@@ -2,7 +2,7 @@ EXE:=duktapetest
 
 all : $(EXE)
 
-CFLAGS?=-march=rv32ima -mabi=ilp32 -fPIC -Os -s -static
+CFLAGS?=-march=rv32ima -mabi=ilp32 -fPIE -pie -Os -s -static
 LDFLAGS?=-Wl,-elf2flt="-r -s 196608"
 
 DUKTAPEVER:=duktape-2.7.0
