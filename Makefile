@@ -1,4 +1,4 @@
-all :
+all : everything
 
 DTC:=buildroot/output/host/bin/dtc
 
@@ -11,9 +11,14 @@ toolchain : buildroot
 	cp -a busybox_config buildroot/busybox_config
 	make -C buildroot
 
-minimal.dtb : minimal.dts $(DTC)
-	$(DTC) -I dts -O dtb -o minimal.dtb minimal.dts -S 2048
+subprojects :
 
+everything : toolchain
+	make -C hello_linux deploy
+	make -C duktapetest deploy
+	make -C coremark deploy
+	make -C buildroot
+	make -C mini-rv32ima testkern
 
 ##################################################################
 # For Debugging 
@@ -31,7 +36,10 @@ minimal.dtb : minimal.dts $(DTC)
 #	cp riscv_Kconfig buildroot-2022.02.6/output/build/linux-5.15.67/arch/riscv/
 #	make -C buildroot-2022.02.6
 
+minimal.dtb : minimal.dts $(DTC)
+	$(DTC) -I dts -O dtb -o minimal.dtb minimal.dts -S 2048
 
+# Trick for extracting the DTB from 
 dtbextract : $(DTC)
 	# Need 	sudo apt  install device-tree-compiler
 	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -machine dumpdtb=../dtb.dtb && cd ..
