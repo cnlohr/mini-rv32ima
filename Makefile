@@ -22,6 +22,8 @@ testbare :
 	make -C baremetal
 	make -C mini-rv32ima testbare
 
+test_with_qemu :
+	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -machine dtb=../minimal.dtb -nographic -kernel output/images/Image -bios none
 
 ##################################################################
 # For Debugging 
@@ -47,9 +49,6 @@ dtbextract : $(DTC)
 	# Need 	sudo apt  install device-tree-compiler
 	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -machine dumpdtb=../dtb.dtb && cd ..
 	$(DTC) -I dtb -O dts -o dtb.dts dtb.dtb
-
-test_minimaldtb :
-	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -machine dtb=../minimal.dtb -nographic -kernel output/images/Image -bios none
 
 tests :
 	git clone https://github.com/riscv-software-src/riscv-tests

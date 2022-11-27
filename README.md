@@ -53,11 +53,6 @@ To test this, you will need a Linux box with `git build-essential` and whatever 
 
 Everything else: Contact us on my Discord: https://discord.com/invite/CCeyWyZ
 
-## Special Thanks
- * For @regymm and their [patches to buildroot](https://github.com/regymm/buildroot) and help!
- * Buildroot (For being so helpful).
- * @vowstar and their team working on [k210-linux-nommu](https://github.com/vowstar/k210-linux-nommu).
-
 ## Hopeful goals?
  * Further drive down needed features to run Linux.
    * Remove need for RV32A extension on systems with only one CPU.
@@ -67,18 +62,20 @@ Everything else: Contact us on my Discord: https://discord.com/invite/CCeyWyZ
  * Get opensbi working with this.
  * Be able to "embed" rv32 emulators in random projects.
 
+## Special Thanks
+ * For @regymm and their [patches to buildroot](https://github.com/regymm/buildroot) and help!
+   * callout: Regymm's [quazisoc project](https://github.com/regymm/quasiSoC/).
+ * Buildroot (For being so helpful).
+ * @vowstar and their team working on [k210-linux-nommu](https://github.com/vowstar/k210-linux-nommu).
+ * This [guide](https://jborza.com/emulation/2020/04/09/riscv-environment.html)
+ * [rvcodecjs](https://luplab.gitlab.io/rvcodecjs/) I probably went through over 1,000 codes here.
+
+
 ## Prereq
 
-For non-buildroot, bare metal (Not used right now)
+If you want to use bare metal to build your binaries so you don't need buildroot, you can use the rv64 gcc in 32-bit mode built into Ubuntu 20.04 and up.
 ```
 sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
-```
-
-## QEMU Test
-
-```
-output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0
-output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -machine dumpdtb=../dtb.dtb
 ```
 
 ## Building Tests
@@ -101,11 +98,6 @@ export CROSS_COMPILE=riscv64-unknown-elf-
 export PLATFORM_RISCV_XLEN=32
 make
 ```
-
-## Resources
-
- * https://jborza.com/emulation/2020/04/09/riscv-environment.html
- * https://blog.pimaker.at/texts/rvc1/
 
 
 ## General notes:
