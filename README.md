@@ -1,16 +1,8 @@
 # riscv_emufun (mini-rv32ima)
 
-## Introduction
+## What
 
-I'm working on a really really simple C Risc-V emultor. So simple it doesn't even have an MMU (Memory Management Unit). I have a few goals, they include:
- * Furthering RV32-NOMMU work to improve Linux support for RV32-NOMMU.  (Imagine if we could run Linux on the $1 ESP32-C3)
- * Learning more about RV32 and writing emulators.
- * Being further inspired by @pimaker's amazing work on [Running Linux in a Pixel Shader](https://blog.pimaker.at/texts/rvc1/) and having the sneaking suspicion performance could be even better!
- * Hoping to port it to some weird places.
- * Understand the *most simplistic* system you can run Linux on and trying to push that boundary.
- * Continue to include my [education of people about assembly language].(https://www.youtube.com/watch?v=Gelf0AyVGy4)
-
-What this is: A single-file-header, [mini-rv32ima.h](https://github.com/cnlohr/riscv_emufun/blob/master/mini-rv32ima/mini-rv32ima.h), in the [STB Style library](https://github.com/nothings/stb) that:
+mini-rv32ima is a single-file-header, [mini-rv32ima.h](https://github.com/cnlohr/riscv_emufun/blob/master/mini-rv32ima/mini-rv32ima.h), in the [STB Style library](https://github.com/nothings/stb) that:
  * Implements a RISC-V **rv32ima/Zifencei+Zicsr** (and partial su), with CLINT and MMIO.
  * Is about **400 lines** of actual code.
  * Has **no dependencies**, not even libc.
@@ -28,6 +20,18 @@ It has a [demo wrapper](https://github.com/cnlohr/riscv_emufun/blob/master/mini-
 Just see the `mini-rv32ima` folder.
 
 It's "fully functional" now in that I can run Linux, apps, etc.  Compile flat binaries and drop them in an image.
+
+## Why
+
+I'm working on a really really simple C Risc-V emultor. So simple it doesn't even have an MMU (Memory Management Unit). I have a few goals, they include:
+ * Furthering RV32-NOMMU work to improve Linux support for RV32-NOMMU.  (Imagine if we could run Linux on the $1 ESP32-C3)
+ * Learning more about RV32 and writing emulators.
+ * Being further inspired by @pimaker's amazing work on [Running Linux in a Pixel Shader](https://blog.pimaker.at/texts/rvc1/) and having the sneaking suspicion performance could be even better!
+ * Hoping to port it to some weird places.
+ * Understand the *most simplistic* system you can run Linux on and trying to push that boundary.
+ * Continue to include my [education of people about assembly language].(https://www.youtube.com/watch?v=Gelf0AyVGy4)
+
+## How
 
 To test this, you will need a Linux box with `git build-essential` and whatever other requirements are in place for [buildroot](https://buildroot.org/).
  * Clone this repo.
