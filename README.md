@@ -1,4 +1,4 @@
-# riscv_emufun (mini_rv32ima)
+# riscv_emufun (mini-rv32ima)
 
 ## Introduction
 
@@ -13,7 +13,7 @@ What this is: A single-file-header, [mini-rv32ima.h](https://github.com/cnlohr/r
  * Implements a RISC-V **rv32ima/Zifencei+Zicsr** (and partial su), with CLINT and MMIO.
  * Is about **400 lines** of actual code.
  * Has **no dependencies**, not even libc.
- * Is **VERY EASY TOHACK**.  So you can easily add CSRs, instructions, MMIO, etc!
+ * Is **easily extensible**.  So you can easily add CSRs, instructions, MMIO, etc!
  * Is pretty **performant**. (~450 coremark on my laptop, about 1/2 the speed of QEMU)
  * Is human-readable and in **basic C** code.
  * Is "**incomplete**" in that it didn't implement the tons of the spec that Linux doesn't (and you shouldn't) use.
@@ -36,7 +36,22 @@ To test this, you will need a Linux box with `git build-essential` and whatever 
 
 ...And you can almost run Linux in Linux in Linux (though not quite yet).
 
+## Special Thanks
+ * For @regymm and their [patches to buildroot](https://github.com/regymm/buildroot) and help!
+ * Buildroot (For being so helpful).
+ * @vowstar and their team working on [k210-linux-nommu](https://github.com/vowstar/k210-linux-nommu).
 
+## Questions?
+ * Why not rv64?
+   * Because then I can't run it as easily in a pixel shader if I ever hope to.
+ * Why no MMU?
+   * Because I like simple things, and MMUs add sophistication.
+ * Can I add an MMU?
+   * Yes.  It actually probably would be too difficult.
+ * Should I add an MMU?
+   * No.  It is important to further support for nommu systems to empower minimal Risc-V designs!
+
+Everything else: Contact us on my Discord: https://discord.com/invite/CCeyWyZ
 
 ## Personal Notes
 
