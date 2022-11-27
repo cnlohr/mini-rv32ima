@@ -44,8 +44,6 @@ To test this, you will need a Linux box with `git build-essential` and whatever 
 ## Questions?
  * Why not rv64?
    * Because then I can't run it as easily in a pixel shader if I ever hope to.
- * Why no MMU?
-   * Because I like simple things, and MMUs add sophistication.
  * Can I add an MMU?
    * Yes.  It actually probably would be too difficult.
  * Should I add an MMU?
@@ -78,27 +76,6 @@ If you want to use bare metal to build your binaries so you don't need buildroot
 sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
 ```
 
-## Building Tests
-
-(This does not work, now)
-```
-cd riscv-tests
-export CROSS_COMPILE=riscv64-linux-gnu-
-export PLATFORM_RISCV_XLEN=32
-CC=riscv64-linux-gnu-gcc ./configure
-make XLEN=32 RISCV_PREFIX=riscv64-unknown-elf- RISCV_GCC_OPTS="-g -O1 -march=rv32imaf -mabi=ilp32f -I/usr/include"
-```
-
-
-## Building OpenSBI
-
-```
-cd opensbi
-export CROSS_COMPILE=riscv64-unknown-elf-
-export PLATFORM_RISCV_XLEN=32
-make
-```
-
 
 ## General notes:
  * QEMU out-of-box.
@@ -124,3 +101,27 @@ make
 
 
 
+## Attic
+
+(These things don't currently work)
+
+### Building Tests
+
+(This does not work, now)
+```
+cd riscv-tests
+export CROSS_COMPILE=riscv64-linux-gnu-
+export PLATFORM_RISCV_XLEN=32
+CC=riscv64-linux-gnu-gcc ./configure
+make XLEN=32 RISCV_PREFIX=riscv64-unknown-elf- RISCV_GCC_OPTS="-g -O1 -march=rv32imaf -mabi=ilp32f -I/usr/include"
+```
+
+### Building OpenSBI
+
+(This does not currently work!)
+```
+cd opensbi
+export CROSS_COMPILE=riscv64-unknown-elf-
+export PLATFORM_RISCV_XLEN=32
+make
+```
