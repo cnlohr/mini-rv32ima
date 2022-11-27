@@ -14,7 +14,7 @@
 
 	memory@80000000 {
 		device_type = "memory";
-		reg = <0x00 0x80000000 0x00 0x7ffc000>; // Leave 16kB at end for core + DTB
+		reg = <0x00 0x80000000 0x00 0x3ffc000>; // Leave 16kB at end for core + DTB
 	};
 
 	cpus {
