@@ -1,4 +1,4 @@
-# riscv_emufun
+# riscv_emufun (mini_rv32ima)
 
 ## Introduction
 
