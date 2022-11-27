@@ -35,9 +35,9 @@ I'm working on a really really simple C Risc-V emultor. So simple it doesn't eve
 
 To test this, you will need a Linux box with `git build-essential` and whatever other requirements are in place for [buildroot](https://buildroot.org/).
  * Clone this repo.
- * `make everything`
- * About 20 minutes.  (Or 4+ hours if you're on [Windows Subsytem for Linux 2](https://github.com/microsoft/WSL/issues/4197))
- * And you should be dropped into a Linux busybox shell with some little tools that were compiled here.
+ * `make basictest`
+ * It automatically downloads the image (~1MB)
+ * Enjoy.
 
 ...And you can almost run Linux in Linux in Linux (though not quite yet).
 
@@ -71,7 +71,13 @@ Everything else: Contact us on my Discord: https://discord.com/invite/CCeyWyZ
  * [rvcodecjs](https://luplab.gitlab.io/rvcodecjs/) I probably went through over 1,000 codes here.
 
 
-## Prereq
+## More details
+
+If you want to build the kernel yourself:
+ * `make everything`
+ * About 20 minutes.  (Or 4+ hours if you're on [Windows Subsytem for Linux 2](https://github.com/microsoft/WSL/issues/4197))
+ * And you should be dropped into a Linux busybox shell with some little tools that were compiled here.
+
 
 If you want to use bare metal to build your binaries so you don't need buildroot, you can use the rv64 gcc in 32-bit mode built into Ubuntu 20.04 and up.
 ```

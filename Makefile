@@ -18,6 +18,9 @@ everything : toolchain
 	make -C buildroot
 	make -C mini-rv32ima testkern
 
+basictest :
+	make -C mini-rv32ima test_with_image
+
 testbare :
 	make -C baremetal
 	make -C mini-rv32ima testbare
@@ -25,8 +28,6 @@ testbare :
 test_with_qemu :
 	cd buildroot && output/host/bin/qemu-system-riscv32 -cpu rv32,mmu=false -m 128M -machine virt -nographic -kernel output/images/Image -bios none #-machine dtb=../minimal.dtb 
 
-test_with_image :
-	make -C mini-rv32ima test_with_image
 
 ##################################################################
 # For Debugging 
