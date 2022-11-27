@@ -16,6 +16,8 @@ hello_linux : hello_linux.c
 
 deploy : hello_linux
 	cp $^ ../buildroot/output/target/root
+
+rebuild :
 	make -C.. toolchain 
 
 clean :
