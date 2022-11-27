@@ -12,7 +12,7 @@ toolchain : buildroot
 	make -C buildroot
 
 minimal.dtb : minimal.dts $(DTC)
-	$(DTC) -I dts -O dtb -o minimal.dtb minimal.dts -S 8192
+	$(DTC) -I dts -O dtb -o minimal.dtb minimal.dts -S 2048
 
 
 ##################################################################
