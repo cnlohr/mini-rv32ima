@@ -24,7 +24,7 @@ $(EXE) : $(DUKTAPEVER)
 deploy : $(EXE) fizzbuzz.js
 	cp $^ ../buildroot/output/target/root
 
-rebuild :
+rebuild : deploy
 	make -C.. toolchain 
 
 # sudo apt-get install node node-js-yaml node-yamlish python-yaml
