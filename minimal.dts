@@ -8,7 +8,7 @@
 
 	chosen {
 		/* TODO: Investigate keep_bootcon */
-		bootargs = "keep_bootcon earlycon=uart8250,mmio,0x10000000,1000000 console=ttyS0";
+		bootargs = "earlycon=uart8250,mmio,0x10000000,1000000 console=ttyS0";
 		/* stdout-path = "/soc/uart@10000000"; */
 	};
 
