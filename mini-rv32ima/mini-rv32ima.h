@@ -4,13 +4,20 @@
 #define _MINI_RV32IMAH_H
 
 /**
-    To use mini-rv32ima.h do the following:
+    To use mini-rv32ima.h for the bare minimum, the following:
 
 	#define MINI_RV32_RAM_SIZE ram_amt
 	#define MINIRV32_IMPLEMENTATION
 
 	#include "mini-rv32ima.h"
 
+	Though, that's not _that_ interesting. You probably want I/O!
+
+
+	Notes:
+		* There is a dedicated CLNT at 0x10000000.
+		* There is free MMIO from there to 0x12000000.
+		* You can put things like a UART, or whatever there.
 */
 
 #ifndef MINIRV32WARN
@@ -39,10 +46,10 @@
 
 #ifndef MINIRV32_CUSTOM_MEMORY_BUS
 	#define MINIRV32_STORE4( ofs, val ) *(uint32_t*)(image + ofs) = val
-	#define MINIRV32_LOAD4( ofs ) *(uint32_t*)(image + ofs)
 	#define MINIRV32_STORE2( ofs, val ) *(uint16_t*)(image + ofs) = val
-	#define MINIRV32_LOAD2( ofs ) *(uint16_t*)(image + ofs)
 	#define MINIRV32_STORE1( ofs, val ) *(uint8_t*)(image + ofs) = val
+	#define MINIRV32_LOAD4( ofs ) *(uint32_t*)(image + ofs)
+	#define MINIRV32_LOAD2( ofs ) *(uint16_t*)(image + ofs)
 	#define MINIRV32_LOAD1( ofs ) *(uint8_t*)(image + ofs)
 #endif
 
@@ -83,36 +90,41 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 
 #ifdef MINIRV32_IMPLEMENTATION
 
+#define CSR( x ) state->x
+#define SETCSR( x, val ) { state->x = val; }
+#define REG( x ) state->registers[x]
+#define REGSET( x, val ) state->registers[x] = val;
+
 MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count )
 {
-	uint32_t new_timer = state->timerl + elapsedUs;
-	if( new_timer < state->timerl ) state->timerh++;
-	state->timerl = new_timer;
+	uint32_t new_timer = CSR( timerl ) + elapsedUs;
+	if( new_timer < CSR( timerl) ) CSR( timerh )++;
+	CSR( timerl ) = new_timer;
 
 	// Handle Timer interrupt.
-	if( ( state->timerh > state->timermatchh || ( state->timerh == state->timermatchh && state->timerl > state->timermatchl ) ) && ( state->timermatchh || state->timermatchl )  )
+	if( ( CSR( timerh ) > CSR( timermatchh ) || ( CSR( timerh ) == CSR( timermatchh ) && CSR( timerl ) > CSR( timermatchl ) ) ) && ( CSR( timermatchh ) || CSR( timermatchl ) ) )
 	{
-		state->extraflags &= ~4; // Clear WFI
-		state->mip |= 1<<7; //MSIP of MIP // https://stackoverflow.com/a/61916199/2926815  Fire interrupt.
+		CSR( extraflags ) &= ~4; // Clear WFI
+		CSR( mip ) |= 1<<7; //MSIP of MIP // https://stackoverflow.com/a/61916199/2926815  Fire interrupt.
 	}
 	else
-		state->mip &= ~(1<<7);
+		CSR( mip ) &= ~(1<<7);
+
+	// If WFI, don't run processor.
+	if( CSR( extraflags ) & 4 )
+		return 1;
 
 	int icount;
+
 	for( icount = 0; icount < count; icount++ )
 	{
-		uint32_t * regs = state->registers;
 		uint32_t retval = 0; // If positive, is a trap or interrupt.  If negative, is fatal error.
 
-		// Increment both wall-clock and instruction count time.
-		++state->cyclel;
-		if( state->cyclel == 0 ) state->cycleh++;
+		// Increment both wall-clock and instruction count time.  (NOTE: Not strictly needed to run Linux)
+		CSR( cyclel )++;
+		if( CSR( cyclel ) == 0 ) CSR( cycleh )++;
 
-		// If WFI, don't run processor.
-		if( state->extraflags & 4 )
-			return 1;
-
-		uint32_t pc = state->pc;
+		uint32_t pc = CSR( pc );
 		uint32_t ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
 		uint32_t ir = MINIRV32_LOAD4( ofs_pc );
 		uint32_t rdid = (ir >> 7) & 0x1f;
@@ -139,15 +151,15 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 				uint32_t imm = ir >> 20;
 				int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
 				rval = pc + 4;
-				pc = ( (regs[ (ir >> 15) & 0x1f ] + imm_se) & ~1) - 4;
+				pc = ( (REG( (ir >> 15) & 0x1f ) + imm_se) & ~1) - 4;
 				break;
 			}
 			case 0b1100011: // Branch
 			{
 				uint32_t immm4 = ((ir & 0xf00)>>7) | ((ir & 0x7e000000)>>20) | ((ir & 0x80) << 4) | ((ir >> 31)<<12);
 				if( immm4 & 0x1000 ) immm4 |= 0xffffe000;
-				int32_t rs1 = regs[(ir >> 15) & 0x1f];
-				int32_t rs2 = regs[(ir >> 20) & 0x1f];
+				int32_t rs1 = REG((ir >> 15) & 0x1f);
+				int32_t rs2 = REG((ir >> 20) & 0x1f);
 				immm4 = pc + immm4 - 4;
 				rdid = 0;
 				switch( ( ir >> 12 ) & 0x7 )
@@ -165,7 +177,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 			}
 			case 0b0000011: // Load
 			{
-				uint32_t rs1 = regs[(ir >> 15) & 0x1f];
+				uint32_t rs1 = REG((ir >> 15) & 0x1f);
 				uint32_t imm = ir >> 20;
 				int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
 				uint32_t rsval = rs1 + imm_se;
@@ -177,9 +189,9 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					if( rsval >= 0x10000000 && rsval < 0x12000000 )  // UART, CLNT
 					{
 						if( rsval == 0x1100bffc ) // https://chromitem-soc.readthedocs.io/en/latest/clint.html
-							rval = state->timerh;
+							rval = CSR( timerh );
 						else if( rsval == 0x1100bff8 )
-							rval = state->timerl;
+							rval = CSR( timerl );
 						else
 							MINIRV32_HANDLE_MEM_LOAD_CONTROL( rsval, rval );
 					}
@@ -206,8 +218,8 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 			}
 			case 0b0100011: // Store
 			{
-				uint32_t rs1 = regs[(ir >> 15) & 0x1f];
-				uint32_t rs2 = regs[(ir >> 20) & 0x1f];
+				uint32_t rs1 = REG((ir >> 15) & 0x1f);
+				uint32_t rs2 = REG((ir >> 20) & 0x1f);
 				uint32_t addy = ( ( ir >> 7 ) & 0x1f ) | ( ( ir & 0xfe000000 ) >> 20 );
 				if( addy & 0x800 ) addy |= 0xfffff000;
 				addy += rs1 - MINIRV32_RAM_IMAGE_OFFSET;
@@ -220,9 +232,9 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					{
 						// Should be stuff like SYSCON, 8250, CLNT
 						if( addy == 0x11004004 ) //CLNT
-							state->timermatchh = rs2;
+							CSR( timermatchh ) = rs2;
 						else if( addy == 0x11004000 ) //CLNT
-							state->timermatchl = rs2;
+							CSR( timermatchl ) = rs2;
 						else
 							MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, rs2 );
 					}
@@ -250,9 +262,9 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 			{
 				uint32_t imm = ir >> 20;
 				imm = imm | (( imm & 0x800 )?0xfffff000:0);
-				uint32_t rs1 = regs[(ir >> 15) & 0x1f];
+				uint32_t rs1 = REG((ir >> 15) & 0x1f);
 				uint32_t is_reg = !!( ir & 0b100000 );
-				uint32_t rs2 = is_reg ? regs[imm & 0x1f] : imm;
+				uint32_t rs2 = is_reg ? REG(imm & 0x1f) : imm;
 
 				if( is_reg && ( ir & 0x02000000 ) )
 				{
@@ -294,24 +306,24 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 				if( (microop & 3) ) // It's a Zicsr function.
 				{
 					int rs1imm = (ir >> 15) & 0x1f;
-					uint32_t rs1 = regs[rs1imm];
+					uint32_t rs1 = REG(rs1imm);
 					uint32_t writeval = rs1;
 
 					// https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
 					// Generally, support for Zicsr
 					switch( csrno )
 					{
-					case 0x340: rval = state->mscratch; break;
-					case 0x305: rval = state->mtvec; break;
-					case 0x304: rval = state->mie; break;
-					case 0xC00: rval = state->cyclel; break;
-					case 0x344: rval = state->mip; break;
-					case 0x341: rval = state->mepc; break;
-					case 0x300: rval = state->mstatus; break; //mstatus
-					case 0x342: rval = state->mcause; break;
-					case 0x343: rval = state->mtval; break;
+					case 0x340: rval = CSR( mscratch ); break;
+					case 0x305: rval = CSR( mtvec ); break;
+					case 0x304: rval = CSR( mie ); break;
+					case 0xC00: rval = CSR( cyclel ); break;
+					case 0x344: rval = CSR( mip ); break;
+					case 0x341: rval = CSR( mepc ); break;
+					case 0x300: rval = CSR( mstatus ); break; //mstatus
+					case 0x342: rval = CSR( mcause ); break;
+					case 0x343: rval = CSR( mtval ); break;
 					case 0xf11: rval = 0xff0ff0ff; break; //mvendorid
-					case 0x301: rval = 0x40001101; break; //misa (XLEN=32, IMA) TODO: Consider setting X bit.
+					case 0x301: rval = 0x40401101; break; //misa (XLEN=32, IMA+X)
 					//case 0x3B0: rval = 0; break; //pmpaddr0
 					//case 0x3a0: rval = 0; break; //pmpcfg0
 					//case 0xf12: rval = 0x00000000; break; //marchid
@@ -334,14 +346,14 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 
 					switch( csrno )
 					{
-					case 0x340: state->mscratch = writeval; break;
-					case 0x305: state->mtvec = writeval; break;
-					case 0x304: state->mie = writeval; break;
-					case 0x344: state->mip = writeval; break;
-					case 0x341: state->mepc = writeval; break;
-					case 0x300: state->mstatus = writeval; break; //mstatus
-					case 0x342: state->mcause = writeval; break;
-					case 0x343: state->mtval = writeval; break;
+					case 0x340: SETCSR( mscratch, writeval ); break;
+					case 0x305: SETCSR( mtvec, writeval ); break;
+					case 0x304: SETCSR( mie, writeval ); break;
+					case 0x344: SETCSR( mip, writeval ); break;
+					case 0x341: SETCSR( mepc, writeval ); break;
+					case 0x300: SETCSR( mstatus, writeval ); break; //mstatus
+					case 0x342: SETCSR( mcause, writeval ); break;
+					case 0x343: SETCSR( mtval, writeval ); break;
 					//case 0x3a0: break; //pmpcfg0
 					//case 0x3B0: break; //pmpaddr0
 					//case 0xf11: break; //mvendorid
@@ -356,26 +368,27 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 				else if( microop == 0b000 ) // "SYSTEM"
 				{
 					rdid = 0;
-					if( csrno == 0x105 ) //WFI
+					if( csrno == 0x105 ) //WFI (Wait for interrupts)
 					{
-						state->mstatus |= 8;
-						state->extraflags |= 4;
+						CSR( mstatus ) |= 8;    //Enable interrupts
+						CSR( extraflags ) |= 4; //Infor environment we want to go to sleep.
 					}
 					else if( ( ( csrno & 0xff ) == 0x02 ) )  // MRET
 					{
 						//https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
 						//Table 7.6. MRET then in mstatus/mstatush sets MPV=0, MPP=0, MIE=MPIE, and MPIE=1. La
 						// Should also update mstatus to reflect correct mode.
-						uint32_t startmstatus = state->mstatus;
-						state->mstatus = (( state->mstatus & 0x80) >> 4) | ((state->extraflags&3) << 11) | 0x80;
-						state->extraflags = (state->extraflags & ~3) | ((startmstatus >> 11) & 3);
-						pc = state->mepc-4;
+						uint32_t startmstatus = CSR( mstatus );
+						uint32_t startextraflags = CSR( extraflags );
+						SETCSR( mstatus , (( startmstatus & 0x80) >> 4) | ((startextraflags&3) << 11) | 0x80 );
+						SETCSR( extraflags, (startextraflags & ~3) | ((startmstatus >> 11) & 3) );
+						pc = CSR( mepc ) -4;
 					}
 					else
 					{
 						switch( csrno )
 						{
-						case 0: retval = (state->extraflags & 3) ? (11+1) : (8+1); break; // ECALL; 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
+						case 0: retval = ( CSR( extraflags ) & 3) ? (11+1) : (8+1); break; // ECALL; 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
 						case 1:	retval = (3+1); break; // EBREAK 3 = "Breakpoint"
 						default: retval = (2+1); break; // Illegal opcode.
 						}
@@ -387,8 +400,8 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 			}
 			case 0b0101111: // RV32A
 			{
-				uint32_t rs1 = regs[(ir >> 15) & 0x1f];
-				uint32_t rs2 = regs[(ir >> 20) & 0x1f];
+				uint32_t rs1 = REG((ir >> 15) & 0x1f);
+				uint32_t rs2 = REG((ir >> 20) & 0x1f);
 				uint32_t irmid = ( ir>>27 ) & 0x1f;
 
 				rs1 -= MINIRV32_RAM_IMAGE_OFFSET;
@@ -430,11 +443,10 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 
 		if( retval == 0 )
 		{
-			if( rdid ) regs[rdid] = rval; // Write back register.
-
-			else if( pc - MINIRV32_RAM_IMAGE_OFFSET >= MINI_RV32_RAM_SIZE ) retval = 1 + 1; //Handle misaligned access
-			else if( pc & 3 ) retval = 1 + 0; // Handle access violation on instruction read.
-			else if( ( state->mip & (1<<7) ) && ( state->mie & (1<<7) /*mtie*/ ) && ( state->mstatus & 0x8 /*mie*/) )
+			if( rdid ) { REGSET( rdid, rval ); } // Write back register.
+			else if( pc - MINIRV32_RAM_IMAGE_OFFSET >= MINI_RV32_RAM_SIZE ) retval = 1 + 1;  // Handle access violation on instruction read.
+			else if( pc & 3 ) retval = 1 + 0; //Handle PC-misaligned access
+			else if( ( CSR( mip ) & (1<<7) ) && ( CSR( mie ) & (1<<7) /*mtie*/ ) && ( CSR( mstatus ) & 0x8 /*mie*/) )
 			{
 				retval = 0x80000007;
 				pc += 4;
@@ -448,29 +460,29 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 		{
 			if( retval & 0x80000000 ) // If prefixed with 0x100, it's an interrupt, not a trap.
 			{
-				state->mcause = retval;
-				state->mtval = 0;
+				SETCSR( mcause, retval );
+				SETCSR( mtval, 0 );
 			}
 			else
 			{
-				state->mcause = retval - 1;
-				state->mtval = (retval > 5 && retval <= 8)? rval : pc;
+				SETCSR( mcause,  retval - 1 );
+				SETCSR( mtval, (retval > 5 && retval <= 8)? rval : pc );
 			}
-			state->mepc = pc; //TRICKY: The kernel advances mepc automatically.
-			//state->mstatus & 8 = MIE, & 0x80 = MPIE
+			SETCSR( mepc, pc ); //TRICKY: The kernel advances mepc automatically.
+			//CSR( mstatus ) & 8 = MIE, & 0x80 = MPIE
 			// On an interrupt, the system moves current MIE into MPIE
-			state->mstatus = (( state->mstatus & 0x08) << 4) | ((state->extraflags&3) << 11);
-			pc = (state->mtvec - 4);
+			SETCSR( mstatus, (( CSR( mstatus ) & 0x08) << 4) | (( CSR( extraflags ) & 3 ) << 11) );
+			pc = (CSR( mtvec ) - 4);
 
 			// XXX TODO: Do we actually want to check here? Is this correct?
 			if( !(retval & 0x80000000) )
-				state->extraflags = state->extraflags | 3;
+				CSR( extraflags ) |= 3;
 			retval = 0;
 		}
 
-		state->pc = pc + 4;
+		SETCSR( pc, pc + 4 );
 
-		if( retval )
+		if( retval ) // Even positive codes return here.
 			return retval;
 	}
 	return 0;
