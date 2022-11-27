@@ -16,6 +16,7 @@ What this is: A single-file-header, [mini-rv32ima.h](https://github.com/cnlohr/r
  * Is VERY EASY TOHACK.  So you can easily add CSRs, instructions, MMIO, etc!
  * Is reasonably performant. (~450 coremark on my laptop)
  * Is human-readable and in basic C code.
+ * Is "incomplete" in that it didn't implement the tons of the spec that Linux doesn't (and you shouldn't) use.
 
 It has a [demo wrapper](https://github.com/cnlohr/riscv_emufun/blob/master/mini-rv32ima/mini-rv32ima.c) that:
  * Implements a CLI, SYSCON, UART, DTB and Kernel image loading.

@@ -98,7 +98,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count )
 {
 	uint32_t new_timer = CSR( timerl ) + elapsedUs;
-	if( new_timer < CSR( timerl) ) CSR( timerh )++;
+	if( new_timer < CSR( timerl ) ) CSR( timerh )++;
 	CSR( timerl ) = new_timer;
 
 	// Handle Timer interrupt.
@@ -118,7 +118,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 
 	for( icount = 0; icount < count; icount++ )
 	{
-		uint32_t retval = 0; // If positive, is a trap or interrupt.  If negative, is fatal error.
+		uint32_t trap = 0; // If positive, is a trap or interrupt.  If negative, is fatal error.
 
 		// Increment both wall-clock and instruction count time.  (NOTE: Not strictly needed to run Linux)
 		CSR( cyclel )++;
@@ -171,7 +171,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					case 0b101: if( rs1 >= rs2 ) pc = immm4; break; //BGE
 					case 0b110: if( (uint32_t)rs1 < (uint32_t)rs2 ) pc = immm4; break;   //BLTU
 					case 0b111: if( (uint32_t)rs1 >= (uint32_t)rs2 ) pc = immm4; break;  //BGEU
-					default: retval = (2+1);
+					default: trap = (2+1);
 				}
 				break;
 			}
@@ -197,7 +197,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					}
 					else
 					{
-						retval = (5+1);
+						trap = (5+1);
 						rval = rsval;
 					}
 				}
@@ -211,7 +211,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						case 0b010: rval = MINIRV32_LOAD4( rsval ); break;
 						case 0b100: rval = MINIRV32_LOAD1( rsval ); break;
 						case 0b101: rval = MINIRV32_LOAD2( rsval ); break;
-						default: retval = (2+1);
+						default: trap = (2+1);
 					}
 				}
 				break;
@@ -235,12 +235,17 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 							CSR( timermatchh ) = rs2;
 						else if( addy == 0x11004000 ) //CLNT
 							CSR( timermatchl ) = rs2;
+						else if( addy == 0x11100000 ) //SYSCON (reboot, poweroff, etc.)
+						{
+							SETCSR( pc, pc + 4 );
+							return rs2; // NOTE: PC will be PC of Syscon.
+						}
 						else
 							MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, rs2 );
 					}
 					else
 					{
-						retval = (7+1); // Store access fault.
+						trap = (7+1); // Store access fault.
 						rval = addy + MINIRV32_RAM_IMAGE_OFFSET;
 					}
 				}
@@ -252,7 +257,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						case 0b000: MINIRV32_STORE1( addy, rs2 ); break;
 						case 0b001: MINIRV32_STORE2( addy, rs2 ); break;
 						case 0b010: MINIRV32_STORE4( addy, rs2 ); break;
-						default: retval = (2+1);
+						default: trap = (2+1);
 					}
 				}
 				break;
@@ -372,6 +377,8 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					{
 						CSR( mstatus ) |= 8;    //Enable interrupts
 						CSR( extraflags ) |= 4; //Infor environment we want to go to sleep.
+						SETCSR( pc, pc + 4 );
+						return 1;
 					}
 					else if( ( ( csrno & 0xff ) == 0x02 ) )  // MRET
 					{
@@ -388,14 +395,14 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					{
 						switch( csrno )
 						{
-						case 0: retval = ( CSR( extraflags ) & 3) ? (11+1) : (8+1); break; // ECALL; 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
-						case 1:	retval = (3+1); break; // EBREAK 3 = "Breakpoint"
-						default: retval = (2+1); break; // Illegal opcode.
+						case 0: trap = ( CSR( extraflags ) & 3) ? (11+1) : (8+1); break; // ECALL; 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
+						case 1:	trap = (3+1); break; // EBREAK 3 = "Breakpoint"
+						default: trap = (2+1); break; // Illegal opcode.
 						}
 					}
 				}
 				else
-					retval = (2+1); 				// Note micrrop 0b100 == undefined.
+					trap = (2+1); 				// Note micrrop 0b100 == undefined.
 				break;
 			}
 			case 0b0101111: // RV32A
@@ -410,7 +417,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 
 				if( rs1 >= MINI_RV32_RAM_SIZE-3 )
 				{
-					retval = (7+1); //Store/AMO access fault
+					trap = (7+1); //Store/AMO access fault
 					rval = rs1 + MINIRV32_RAM_IMAGE_OFFSET;
 				}
 				else
@@ -432,41 +439,41 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						case 0b10100: rs2 = ((int32_t)rs2>(int32_t)rval)?rs2:rval; break; //AMOMAX.W
 						case 0b11000: rs2 = (rs2<rval)?rs2:rval; break; //AMOMINU.W
 						case 0b11100: rs2 = (rs2>rval)?rs2:rval; break; //AMOMAXU.W
-						default: retval = (2+1); dowrite = 0; break; //Not supported.
+						default: trap = (2+1); dowrite = 0; break; //Not supported.
 					}
 					if( dowrite ) MINIRV32_STORE4( rs1, rs2 );
 				}
 				break;
 			}
-			default: retval = (2+1); // Fault: Invalid opcode.
+			default: trap = (2+1); // Fault: Invalid opcode.
 		}
 
-		if( retval == 0 )
+		if( trap == 0 )
 		{
 			if( rdid ) { REGSET( rdid, rval ); } // Write back register.
-			else if( pc - MINIRV32_RAM_IMAGE_OFFSET >= MINI_RV32_RAM_SIZE ) retval = 1 + 1;  // Handle access violation on instruction read.
-			else if( pc & 3 ) retval = 1 + 0; //Handle PC-misaligned access
+			else if( pc - MINIRV32_RAM_IMAGE_OFFSET >= MINI_RV32_RAM_SIZE ) trap = 1 + 1;  // Handle access violation on instruction read.
+			else if( pc & 3 ) trap = 1 + 0; //Handle PC-misaligned access
 			else if( ( CSR( mip ) & (1<<7) ) && ( CSR( mie ) & (1<<7) /*mtie*/ ) && ( CSR( mstatus ) & 0x8 /*mie*/) )
 			{
-				retval = 0x80000007;
+				trap = 0x80000007;
 				pc += 4;
 			}
 		}
 
-		MINIRV32_POSTEXEC( state, image, pc, ir, retval );
+		MINIRV32_POSTEXEC( pc, ir, trap );
 
 		// Handle traps and interrupts.
-		if( retval > 0 )
+		if( trap )
 		{
-			if( retval & 0x80000000 ) // If prefixed with 0x100, it's an interrupt, not a trap.
+			if( trap & 0x80000000 ) // If prefixed with 0x100, it's an interrupt, not a trap.
 			{
-				SETCSR( mcause, retval );
+				SETCSR( mcause, trap );
 				SETCSR( mtval, 0 );
 			}
 			else
 			{
-				SETCSR( mcause,  retval - 1 );
-				SETCSR( mtval, (retval > 5 && retval <= 8)? rval : pc );
+				SETCSR( mcause,  trap - 1 );
+				SETCSR( mtval, (trap > 5 && trap <= 8)? rval : pc );
 			}
 			SETCSR( mepc, pc ); //TRICKY: The kernel advances mepc automatically.
 			//CSR( mstatus ) & 8 = MIE, & 0x80 = MPIE
@@ -475,15 +482,11 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 			pc = (CSR( mtvec ) - 4);
 
 			// XXX TODO: Do we actually want to check here? Is this correct?
-			if( !(retval & 0x80000000) )
+			if( !(trap & 0x80000000) )
 				CSR( extraflags ) |= 3;
-			retval = 0;
 		}
 
 		SETCSR( pc, pc + 4 );
-
-		if( retval ) // Even positive codes return here.
-			return retval;
 	}
 	return 0;
 }

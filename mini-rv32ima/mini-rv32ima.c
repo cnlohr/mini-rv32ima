@@ -18,7 +18,7 @@ static uint32_t HandleControlLoad( uint32_t addy );
 #define MINIRV32_DECORATE  static
 #define MINI_RV32_RAM_SIZE ram_amt
 #define MINIRV32_IMPLEMENTATION
-#define MINIRV32_POSTEXEC( state, image, pc, ir, retval ) { if( retval > 0 ) retval = HandleException( ir, retval ); }
+#define MINIRV32_POSTEXEC( pc, ir, retval ) { if( retval > 0 ) retval = HandleException( ir, retval ); }
 #define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( HandleControlStore( addy, val ) ) return val;
 #define MINIRV32_HANDLE_MEM_LOAD_CONTROL( addy, rval ) rval = HandleControlLoad( addy );
 
@@ -156,7 +156,7 @@ restart:
 			elapsedUs = GetTimeMicroseconds() - lastTime;
 			lastTime += elapsedUs;
 		}
-		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs, 1024 );
+		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs, 1024 ); // Execute upto 1024 cycles before breaking out.
 		switch( ret )
 		{
 			case 0: break;
@@ -250,8 +250,6 @@ static uint32_t HandleControlStore( uint32_t addy, uint32_t val )
 		printf( "%c", val );
 		fflush( stdout );
 	}
-	else if( addy == 0x11100000 ) //SYSCON (reboot, poweroff, etc.)
-		return 1;
 	return 0;
 }
 
