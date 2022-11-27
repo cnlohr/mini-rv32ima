@@ -451,13 +451,12 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 		if( trap == 0 )
 		{
 			if( rdid ) { REGSET( rdid, rval ); } // Write back register.
-			else if( pc - MINIRV32_RAM_IMAGE_OFFSET >= MINI_RV32_RAM_SIZE ) trap = 1 + 1;  // Handle access violation on instruction read.
-			else if( pc & 3 ) trap = 1 + 0; //Handle PC-misaligned access
+			else if( pc - MINIRV32_RAM_IMAGE_OFFSET >= MINI_RV32_RAM_SIZE )
+				trap = 1 + 1;  // Handle access violation on instruction read.
+			else if( pc & 3 )
+				trap = 1 + 0;  //Handle PC-misaligned access
 			else if( ( CSR( mip ) & (1<<7) ) && ( CSR( mie ) & (1<<7) /*mtie*/ ) && ( CSR( mstatus ) & 0x8 /*mie*/) )
-			{
-				trap = 0x80000007;
-				pc += 4;
-			}
+				trap = 0x80000007; // Timer interrupt.
 		}
 
 		MINIRV32_POSTEXEC( pc, ir, trap );
@@ -469,6 +468,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 			{
 				SETCSR( mcause, trap );
 				SETCSR( mtval, 0 );
+				pc += 4; // PC needs to point to where the PC will return to.
 			}
 			else
 			{
