@@ -3,7 +3,7 @@ all : everything
 DTC:=buildroot/output/host/bin/dtc
 
 buildroot :
-	git clone https://github.com/regymm/buildroot --recurse-submodules
+	git clone https://github.com/regymm/buildroot --recurse-submodules --depth 1
 
 toolchain : buildroot
 	cp -a configs/custom_kernel_config buildroot/kernel_config
