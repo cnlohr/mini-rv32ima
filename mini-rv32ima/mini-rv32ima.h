@@ -102,7 +102,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 #define CSR( x ) state->x
 #define SETCSR( x, val ) { state->x = val; }
 #define REG( x ) state->regs[x]
-#define REGSET( x, val ) state->regs[x] = val;
+#define REGSET( x, val ) { state->regs[x] = val; }
 
 MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count )
 {
@@ -140,10 +140,9 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 
 		if( ofs_pc  >= MINI_RV32_RAM_SIZE )
 			trap = 1 + 1;  // Handle access violation on instruction read.
-		if( ofs_pc & 3 )
+		else if( ofs_pc & 3 )
 			trap = 1 + 0;  //Handle PC-misaligned access
-
-		if( !trap )
+		else
 		{
 			ir = MINIRV32_LOAD4( ofs_pc );
 			uint32_t rdid = (ir >> 7) & 0x1f;
@@ -474,7 +473,9 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					REGSET( rdid, rval );
 				} // Write back register.
 				else if( ( CSR( mip ) & (1<<7) ) && ( CSR( mie ) & (1<<7) /*mtie*/ ) && ( CSR( mstatus ) & 0x8 /*mie*/) )
+				{
 					trap = 0x80000007; // Timer interrupt.
+				}
 			}
 		}
 

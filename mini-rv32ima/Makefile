@@ -15,6 +15,14 @@ testkern : mini-rv32ima
 testbare : mini-rv32ima
 	./mini-rv32ima -f ../baremetal/baremetal.bin
 
+DownloadedImage :
+	wget https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/linux-5.18.0-rv32nommu-cnl-1.tar.bz2 -O linux-5.18.0-rv32nommu-cnl-1.tar.bz2
+	tar xjvf linux-5.18.0-rv32nommu-cnl-1.tar.bz2
+	mv Image DownloadedImage
+
+test_with_image : mini-rv32ima DownloadedImage
+	./mini-rv32ima -f DownloadedImage -b sixtyfourmb.dtb
+
 # For dumping specific binaries and info.
 
 # SBI is not currently working
