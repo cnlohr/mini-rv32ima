@@ -2,18 +2,25 @@
 
 ## Introduction
 
-I'm working on a really really simple Risc-V 32 IMA emultor. So simple it doesn't even have an MMU (Memory Management Unit). I have a few goals, they include:
+I'm working on a really really simple C Risc-V emultor. So simple it doesn't even have an MMU (Memory Management Unit). I have a few goals, they include:
  * Furthering RV32-NOMMU work to improve Linux support for RV32-NOMMU.  (Imagine if we could run Linux on the $1 ESP32-C3)
  * Learning more about RV32 and writing emulators.
  * Being further inspired by @pimaker's amazing work on [Running Linux in a Pixel Shader](https://blog.pimaker.at/texts/rvc1/) and having the sneaking suspicion performance could be even better!
  * Hoping to port it to some weird places.
+ * Understand the *most simplistic* system you can run Linux on and trying to push that boundary.
 
-What this is: A single-file-header library that:
- * Implements a full RISC-V 32-bit IMA, with CLINT and MMIO.
+What this is: A single-file-header, [mini-rv32ima.h](https://github.com/cnlohr/riscv_emufun/blob/master/mini-rv32ima/mini-rv32ima.h), in the [STB Style library](https://github.com/nothings/stb) that:
+ * Implements a RISC-V rv32ima/Zifencei+Zicsr (and partial su), with CLINT and MMIO.
  * Is about 400 lines of actual code.
  * Has no dependencies, not even libc.
- * Compiles down to a ~18kB exectuable.
- * Has a demo wrapper that implements a wrapper, UART, DTB and Kernel image loading.
+ * Is VERY EASY TOHACK.  So you can easily add CSRs, instructions, MMIO, etc!
+ * Is reasonably performant. (~450 coremark on my laptop)
+ * Is human-readable and in basic C code.
+
+It has a [demo wrapper](https://github.com/cnlohr/riscv_emufun/blob/master/mini-rv32ima/mini-rv32ima.c) that:
+ * Implements a CLI, SYSCON, UART, DTB and Kernel image loading.
+ * And it only around 250 lines of code, itself.
+ * Compiles down to a ~18kB executable and only relies on libc.
 
 Just see the `mini-rv32ima` folder.
 
@@ -27,37 +34,18 @@ To test this, you will need a Linux box with `git build-essential` and whatever 
 
 ...And you can almost run Linux in Linux in Linux (though not quite yet).
 
-## Personal Notes
 
-## VERY EARLY ROUGH DO NOT USE
+
+## Personal Notes
 
 ## Processor type
 
-Probably/maybe something like: rv32ima/??su+Zifencei+Zicsr
-
-Right now I am just using an rv32im.  But wouldn't it be cool if we could get buildroot running on that?
-
-TODO:
- * Actually make OpenSBI work, it's what buildroot uses to load the Kernel.
-
-
 ## Prereq
 
-For bare metal:
+For bare metal (Not used right now)
 ```
 sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
 ```
-
-## Buildroot Notes
-
-Neat tools:
-
-In root:
-`make toolchain`
-
-From `buildroot-2022.02.6`:
-`make linux-menuconfig`
-`make menuconfig`
 
 ## QEMU Test
 
@@ -102,7 +90,7 @@ make
 
 
 ## General notes:
- * QEMU
+ * QEMU out-of-box.
  * Pi's Linux
  * https://github.com/cnlohr/riscv_emufun/commit/2f09cdeb378dc0215c07eb63f5a6fb43dbbf1871#diff-b48ccd795ae9aced07d022bf010bf9376232c4d78210c3113d90a8d349c59b3dL440
  * Making the kernel assembly to dig through.
@@ -112,6 +100,9 @@ make
    -> Pitfalls.
  * Talk about converting the style to HLSL
  * People are working on relocatable ELFs.
+ * MMIO
+ * Background on RV32IMA
+ * Being able to run it elsewhere.
 
 
 
