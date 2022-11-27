@@ -1,13 +1,22 @@
-all : hello_linux.flt
+all : hello_linux
 
-hello_linux.flt : hello_linux.c
-	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc -march=rv32ima -mabi=ilp32 -fPIC hello_linux.c -Wl,-elf2flt=-r -o hello_linux.flt
-	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S hello_linux.flt.gdb > hello_linux.S
+PREFIX:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-
+CC:=$(PREFIX)gcc
+OBJDUMP:=$(PREFIX)objdump
 
-	#../buildroot/output/host/bin/riscv32-linux-gcc -march=rv32ima -mabi=ilp32 -fPIC -Wl,-elf2flt=-r hello_linux.c -o hello_linux.flt
-	#../buildroot/output/host/bin/riscv32-linux-objdump -S hello_linux.flt.gdb > hello_linux.S
-	#../buildroot/output/host/bin/riscv32-linux-objdump -S hello_linux.elf > hello_linux.S
-	#../buildroot/output/host/bin/riscv32-linux-elf2flt -r -o hello_linux hello_linux.elf
+# Note:  regymm says to do -fPIE -pie -static, instead of -fPIC
+CFLAGS:=-mabi=ilp32 -fPIE -pie -static -march=rv32ima -Os -s -g
+LDFLAGS:=-Wl,-elf2flt=-r
+
+C_S+=hello_linux.c
+
+hello_linux : hello_linux.c
+	$(CC) $(CFLAGS) $(C_S) $(LDFLAGS) -o $@
+	$(OBJDUMP) -S $@.gdb > $@.S
+
+deploy : hello_linux
+	cp $^ ../buildroot/output/target/root
+	make -C.. toolchain 
 
 clean :
-	rm -rf hello_linux.flt hello_linux.flt.gdb
+	rm -rf hello_linux hello_linux.gdb hello_linux.S

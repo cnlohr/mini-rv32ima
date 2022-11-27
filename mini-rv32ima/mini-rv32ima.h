@@ -1,15 +1,40 @@
-
 // Copyright 2022 Charles Lohr, you may use this file under any of the BSD, MIT, or CC0 licenses.
 
 #ifndef _MINI_RV32IMAH_H
 #define _MINI_RV32IMAH_H
+
+/**
+    To use mini-rv32ima.h do the following:
+
+	#define MINI_RV32_RAM_SIZE ram_amt
+	#define MINIRV32_IMPLEMENTATION
+
+	#include "mini-rv32ima.h"
+
+*/
+
+#ifndef MINIRV32WARN
+	#define MINIRV32WARN( x... );
+#endif
+
+#ifndef MINIRV32_DECORATE
+	#define MINIRV32_DECORATE static
+#endif
+
+#ifndef MINIRV32_RAM_IMAGE_OFFSET
+	#define MINIRV32_RAM_IMAGE_OFFSET  0x80000000
+#endif
+
+#ifndef MINIRV32_POSTEXEC
+	#define MINIRV32_POSTEXEC(...);
+#endif
 
 
 // As a note: We quouple-ify these, because in HLSL, we will be operating with
 // uint4's.  We are going to uint4 data to/from system RAM.
 //
 // We're going to try to keep the full processor state to 12 x uint4.
-struct InternalCPUState
+struct MiniRV32IMAState
 {
 	uint32_t registers[32];
 
@@ -38,8 +63,11 @@ struct InternalCPUState
 	uint32_t extraflags; 
 };
 
+MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs );
 
-MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs )
+#ifdef MINIRV32_IMPLEMENTATION
+
+MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs )
 {
 	uint32_t * regs = state->registers;
 	uint32_t retval = 0; // If positive, is a trap or interrupt.  If negative, is fatal error.
@@ -72,7 +100,7 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 
 	uint32_t ir = *(uint32_t*)(image + ofs_pc);
 
-	int rdid = (ir >> 7) & 0x1f;
+	uint32_t rdid = (ir >> 7) & 0x1f;
 	uint32_t rval = 0;
 
 	switch( ir & 0x7f )
@@ -222,7 +250,7 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 			uint32_t imm = ir >> 20;
 			imm = imm | (( imm & 0x800 )?0xfffff000:0);
 			uint32_t rs1 = regs[(ir >> 15) & 0x1f];
-			int is_reg = ( ir & 0b100000 );
+			uint32_t is_reg = !!( ir & 0b100000 );
 			uint32_t rs2 = is_reg ? regs[imm & 0x1f] : imm;
 
 			if( is_reg && ( ir & 0x02000000 ) )
@@ -382,7 +410,7 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 				rval = *((uint32_t*)(image + rs1));
 
 				// Referenced a little bit of https://github.com/franzflasch/riscv_em/blob/master/src/core/core.c
-				int dowrite = 1;
+				uint32_t dowrite = 1;
 				switch( irmid )
 				{
 					case 0b00010: dowrite = 0; break; //LR.W
@@ -392,8 +420,8 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 					case 0b00100: rs2 ^= rval; break; //AMOXOR.W
 					case 0b01100: rs2 &= rval; break; //AMOAND.W
 					case 0b01000: rs2 |= rval; break; //AMOOR.W
-					case 0b10000: rs2 = ((int)rs2<(int)rval)?rs2:rval; break; //AMOMIN.W
-					case 0b10100: rs2 = ((int)rs2>(int)rval)?rs2:rval; break; //AMOMAX.W
+					case 0b10000: rs2 = ((int32_t)rs2<(int32_t)rval)?rs2:rval; break; //AMOMIN.W
+					case 0b10100: rs2 = ((int32_t)rs2>(int32_t)rval)?rs2:rval; break; //AMOMAX.W
 					case 0b11000: rs2 = (rs2<rval)?rs2:rval; break; //AMOMINU.W
 					case 0b11100: rs2 = (rs2>rval)?rs2:rval; break; //AMOMAXU.W
 					default: retval = (2+1); dowrite = 0; break; //Not supported.
@@ -419,6 +447,8 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 		}
 	}
 
+	MINIRV32_POSTEXEC( state, image, pc, ir, retval );
+
 	// Handle traps and interrupts.
 	if( retval > 0 )
 	{
@@ -432,13 +462,13 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 			state->mcause = retval - 1;
 			state->mtval = (retval > 5 && retval <= 8)? rval : pc;
 		}
-		state->mepc = pc; //XXX TRICKY: The kernel advances mepc automatically.
+		state->mepc = pc; //TRICKY: The kernel advances mepc automatically.
 		//state->mstatus & 8 = MIE, & 0x80 = MPIE
 		// On an interrupt, the system moves current MIE into MPIE
 		state->mstatus = (( state->mstatus & 0x08) << 4) | ((state->extraflags&3) << 11);
 		pc = (state->mtvec - 4);
 
-		// XXX TODO: Do we actually want to check here?
+		// XXX TODO: Do we actually want to check here? Is this correct?
 		if( !(retval & 0x80000000) )
 			state->extraflags = state->extraflags | 3;
 		retval = 0;
@@ -448,6 +478,7 @@ MINIRV32_DECORATE int StepInstruction( struct InternalCPUState * state, uint8_t 
 	return retval;
 }
 
+#endif
 
 #endif
 

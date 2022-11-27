@@ -10,23 +10,13 @@
 
 uint32_t ram_amt = 64*1024*1024;
 
-//#define DEBUG_INSTRUCTIONS
-#ifdef DEBUG_INSTRUCTIONS
-#define INST_DBG( x... ) printf( x );
-#else
-#define INST_DBG( x... )
-#endif
-
-#ifdef SOME_EXTRA_DEBUG
-#define INST_INFO( x... ) printf( x );
-#else
-#define INST_INFO( x... )
-#endif
+static uint32_t HandleException( uint32_t ir, uint32_t retval );
 
 #define MINIRV32WARN( x... ) printf( x );
 #define MINIRV32_DECORATE  static
-#define MINIRV32_RAM_IMAGE_OFFSET  0x80000000
 #define MINI_RV32_RAM_SIZE ram_amt
+#define MINIRV32_IMPLEMENTATION
+#define MINIRV32_POSTEXEC( state, image, pc, ir, retval ) { if( retval > 0 ) retval = HandleException( ir, retval ); }
 
 #include "mini-rv32ima.h"
 
@@ -127,8 +117,8 @@ restart:
 			fseek( f, 0, SEEK_END );
 			long dtblen = ftell( f );
 			fseek( f, 0, SEEK_SET );
-			dtb_ptr = ram_amt - dtblen - sizeof( struct InternalCPUState );
-			if( fread( ram_image + dtb_ptr, dtblen - sizeof( struct InternalCPUState ), 1, f ) != 1 )
+			dtb_ptr = ram_amt - dtblen - sizeof( struct MiniRV32IMAState );
+			if( fread( ram_image + dtb_ptr, dtblen - sizeof( struct MiniRV32IMAState ), 1, f ) != 1 )
 			{
 				fprintf( stderr, "Error: Could not open dtb \"%s\"\n", dtb_file_name );
 				return -9;
@@ -145,7 +135,7 @@ restart:
 	}
 
 	// The core lives at the end of RAM.
-	struct InternalCPUState * core = (struct InternalCPUState *)(ram_image + ram_amt - sizeof( struct InternalCPUState ));
+	struct MiniRV32IMAState * core = (struct MiniRV32IMAState *)(ram_image + ram_amt - sizeof( struct MiniRV32IMAState ));
 	core->pc = MINIRV32_RAM_IMAGE_OFFSET;
 	core->registers[10] = 0x00; //hart ID
 	core->registers[11] = dtb_ptr?(dtb_ptr+MINIRV32_RAM_IMAGE_OFFSET):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
@@ -156,17 +146,21 @@ restart:
 	uint64_t lastTime = GetTimeMicroseconds();
 	for( rt = 0; rt < instct || instct < 0; rt++ )
 	{
-		uint32_t elapsedUs = GetTimeMicroseconds() - lastTime;
-		int ret = StepInstruction( core, ram_image, 0, elapsedUs );
+		uint32_t elapsedUs = 0;
+		if( ( rt & 0x100 ) == 0 )
+		{
+			elapsedUs = GetTimeMicroseconds() - lastTime;
+			lastTime += elapsedUs;
+		}
+		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs );
 		switch( ret )
 		{
 			case 0: break;
-			case 1: usleep(1000); break;
+			case 1: usleep(100); break;
 			case 0x7777: goto restart;	//syscon code for restart
 			case 0x5555: return 0;		//syscon code for power-off
 			default: printf( "Unknown failure\n" ); break;
-		} 
-		lastTime += elapsedUs;
+		}
 	}
 }
 
@@ -232,3 +226,15 @@ static uint64_t GetTimeMicroseconds()
 	return tv.tv_usec + ((uint64_t)(tv.tv_sec)) * 1000000LL;
 }
 #endif
+
+static uint32_t HandleException( uint32_t ir, uint32_t code )
+{
+	// Weird opcode emitted by duktape on exit.
+	if( code == 3 )
+	{
+		// Could handle other opcodes here.
+	}
+	return code;
+}
+
+

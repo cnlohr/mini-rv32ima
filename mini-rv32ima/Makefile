@@ -2,8 +2,8 @@ all : mini-rv32ima mini-rv32ima.flt
 
 mini-rv32ima : mini-rv32ima.c mini-rv32ima.h
 	# for debug
-	gcc -o $@ $< -lm -g -Os -Wall
-	#gcc -o $@ $< -lm -Os -ffunction-sections -fdata-sections -Wl,--gc-sections -fwhole-program -s
+	gcc -o $@ $< -g -Os -Wall
+	gcc -o $@.tiny $< -Os -ffunction-sections -fdata-sections -Wl,--gc-sections -fwhole-program -s
 
 mini-rv32ima.flt : mini-rv32ima.c mini-rv32ima.h
 	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc  -march=rv32ima -mabi=ilp32 -fPIC $< -Wl,-elf2flt=-r -o $@
