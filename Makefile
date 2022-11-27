@@ -6,12 +6,10 @@ buildroot :
 	git clone https://github.com/regymm/buildroot --recurse-submodules
 
 toolchain : buildroot
-	cp -a custom_kernel_config buildroot/kernel_config
-	cp -a buildroot_config buildroot/.config
-	cp -a busybox_config buildroot/busybox_config
+	cp -a configs/custom_kernel_config buildroot/kernel_config
+	cp -a configs/buildroot_config buildroot/.config
+	cp -a configs/busybox_config buildroot/busybox_config
 	make -C buildroot
-
-subprojects :
 
 everything : toolchain
 	make -C hello_linux deploy
@@ -19,6 +17,11 @@ everything : toolchain
 	make -C coremark deploy
 	make -C buildroot
 	make -C mini-rv32ima testkern
+
+testbare :
+	make -C baremetal
+	make -C mini-rv32ima testbare
+
 
 ##################################################################
 # For Debugging 

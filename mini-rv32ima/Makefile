@@ -13,7 +13,7 @@ testkern : mini-rv32ima
 	./mini-rv32ima -b sixtyfourmb.dtb -f ../buildroot/output/images/Image
 
 testbare : mini-rv32ima
-	./mini-rv32ima -c 100 -f ../baremetal/baremetal.bin
+	./mini-rv32ima -f ../baremetal/baremetal.bin
 
 # For dumping specific binaries and info.
 

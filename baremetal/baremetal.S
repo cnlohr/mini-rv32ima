@@ -16,8 +16,12 @@ asm_label:
 
 .align 4
 asm_demo_func:
-	la t0, asm_label
-	csrw 0x138, t0
+	addi sp, sp, -16
+	sw t0, 12(sp)
+	la a0, asm_label
+	csrw 0x138, a0
+	lw t0, 12(sp)
+	addi sp, sp, 16
 	ret
 
 

@@ -121,7 +121,8 @@ make
  * MMIO
  * Background on RV32IMA
  * Being able to run it elsewhere.
- * Mention assembly language.
+ * Mention assembly language. (Baremetal)
  * Talk about Makefiles.
+
 
 

@@ -29,7 +29,7 @@ static inline uint32_t get_cyc_count() {
 
 int main()
 {
-
+	lprint("\n");
 	lprint("Hello world from RV32 land.\n");
 	lprint("main is at: ");
 	pprint( (intptr_t)main );
@@ -55,6 +55,7 @@ int main()
 	nprint( cyclecount / timer );
 	lprint( " Mcyc/s\n");
 
+	lprint("\n");
 	SYSCON = 0x5555; // Power off
 }
 
