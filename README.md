@@ -1,5 +1,34 @@
 # riscv_emufun
 
+## Introduction
+
+I'm working on a really really simple Risc-V 32 IMA emultor. So simple it doesn't even have an MMU (Memory Management Unit). I have a few goals, they include:
+ * Furthering RV32-NOMMU work to improve Linux support for RV32-NOMMU.  (Imagine if we could run Linux on the $1 ESP32-C3)
+ * Learning more about RV32 and writing emulators.
+ * Being further inspired by @pimaker's amazing work on [Running Linux in a Pixel Shader](https://blog.pimaker.at/texts/rvc1/) and having the sneaking suspicion performance could be even better!
+ * Hoping to port it to some weird places.
+
+What this is: A single-file-header library that:
+ * Implements a full RISC-V 32-bit IMA, with CLINT and MMIO.
+ * Is about 400 lines of actual code.
+ * Has no dependencies, not even libc.
+ * Compiles down to a ~18kB exectuable.
+ * Has a demo wrapper that implements a wrapper, UART, DTB and Kernel image loading.
+
+Just see the `mini-rv32ima` folder.
+
+It's "fully functional" now in that I can run Linux, apps, etc.  Compile flat binaries and drop them in an image.
+
+To test this, you will need a Linux box with `git build-essential` and whatever other requirements are in place for [buildroot](https://buildroot.org/).
+ * Clone this repo.
+ * `make everything`
+ * About 15 minutes.  (Or 4+ hours if you're on [Windows Subsytem for Linux 2](https://github.com/microsoft/WSL/issues/4197)
+ * And you should be dropped into a shell.
+
+...And you can almost run Linux in Linux in Linux (though not quite yet).
+
+## Personal Notes
+
 ## VERY EARLY ROUGH DO NOT USE
 
 ## Processor type
@@ -81,6 +110,8 @@ make
  * Debugging process.
  * test-driven-development.
    -> Pitfalls.
+ * Talk about converting the style to HLSL
+ * People are working on relocatable ELFs.
 
 
 
