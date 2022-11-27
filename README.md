@@ -79,6 +79,8 @@ make
  * Making the kernel assembly to dig through.
  * touch kernel_config && make
  * Debugging process.
+ * test-driven-development.
+   -> Pitfalls.
 
 
 

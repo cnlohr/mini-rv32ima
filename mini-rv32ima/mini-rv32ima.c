@@ -11,12 +11,16 @@
 uint32_t ram_amt = 64*1024*1024;
 
 static uint32_t HandleException( uint32_t ir, uint32_t retval );
+static uint32_t HandleControlStore( uint32_t addy, uint32_t val );
+static uint32_t HandleControlLoad( uint32_t addy );
 
 #define MINIRV32WARN( x... ) printf( x );
 #define MINIRV32_DECORATE  static
 #define MINI_RV32_RAM_SIZE ram_amt
 #define MINIRV32_IMPLEMENTATION
 #define MINIRV32_POSTEXEC( state, image, pc, ir, retval ) { if( retval > 0 ) retval = HandleException( ir, retval ); }
+#define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( HandleControlStore( addy, val ) ) return val;
+#define MINIRV32_HANDLE_MEM_LOAD_CONTROL( addy, rval ) rval = HandleControlLoad( addy );
 
 #include "mini-rv32ima.h"
 
@@ -152,7 +156,7 @@ restart:
 			elapsedUs = GetTimeMicroseconds() - lastTime;
 			lastTime += elapsedUs;
 		}
-		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs );
+		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs, 1024 );
 		switch( ret )
 		{
 			case 0: break;
@@ -237,4 +241,34 @@ static uint32_t HandleException( uint32_t ir, uint32_t code )
 	return code;
 }
 
+static uint32_t HandleControlStore( uint32_t addy, uint32_t val )
+{
+	//Special: UART (8250)
+	//If writing a byte, allow it to flow into output.
+	if( addy == 0x10000000 )
+	{
+		printf( "%c", val );
+		fflush( stdout );
+	}
+	else if( addy == 0x11100000 ) //SYSCON (reboot, poweroff, etc.)
+		return 1;
+	return 0;
+}
+
+
+static uint32_t HandleControlLoad( uint32_t addy )
+{
+	// Emulating a 8250 UART
+	int byteswaiting;
+	ioctl(0, FIONREAD, &byteswaiting);
+	if( addy == 0x10000005 )
+		return 0x60 | !!byteswaiting;
+	else if( addy == 0x10000000 && byteswaiting )
+	{
+		char rxchar = 0;
+		if( read(fileno(stdin), (char*)&rxchar, 1) > 0 ) // Tricky: getchar can't be used with arrow keys.
+			return rxchar;
+	}
+	return 0;
+}
 
