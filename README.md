@@ -35,7 +35,7 @@ I'm working on a really really simple C Risc-V emultor. So simple it doesn't eve
 
 To test this, you will need a Linux box with `git build-essential` and whatever other requirements are in place for [buildroot](https://buildroot.org/).
  * Clone this repo.
- * `make basictest`
+ * `make testdlimage`
  * It automatically downloads the image (~1MB) and runs the emulator.
  * Should be up and running in about 2.5s depending on internet speed.
 

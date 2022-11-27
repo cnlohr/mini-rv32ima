@@ -9,13 +9,21 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "default64mbdtc.h"
+
+// Just default RAM amount is 64MB.
 uint32_t ram_amt = 64*1024*1024;
 
+static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber );
+static uint64_t GetTimeMicroseconds();
+static void ResetKeyboardInput();
 static uint32_t HandleException( uint32_t ir, uint32_t retval );
 static uint32_t HandleControlStore( uint32_t addy, uint32_t val );
 static uint32_t HandleControlLoad( uint32_t addy );
 static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value );
 
+// This is the functionality we want to override in the emulator.
+//  think of this as the way the emulator's processor is connected to the outside world.
 #define MINIRV32WARN( x... ) printf( x );
 #define MINIRV32_DECORATE  static
 #define MINI_RV32_RAM_SIZE ram_amt
@@ -27,17 +35,12 @@ static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value
 
 #include "mini-rv32ima.h"
 
-static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber );
-static uint64_t GetTimeMicroseconds();
-static void reset_keyboard();
-
-//Tricky: First 32 + 4 words are internal CPU state.
 uint8_t * ram_image = 0;
-
 
 int main( int argc, char ** argv )
 {
-	atexit(reset_keyboard);
+	// Hook exit, because we want to re-enable keyboard.
+	atexit(ResetKeyboardInput);
 	int i;
 	long long instct = -1;
 	int show_help = 0;
@@ -86,8 +89,13 @@ int main( int argc, char ** argv )
 
 	if( show_help || image_file_name == 0 )
 	{
-		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file]\n\t-c instruction count\n\t-s single step with full processor state\n" );
+		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file, or 'disable']\n\t-c instruction count\n\t-s single step with full processor state\n" );
 		return 1;
+	}
+
+	if( !dtb_file_name )
+	{
+		fprintf( stderr, "Warning: Are you sure you don't want to use dtb file?\n" );
 	}
 
 	ram_image = malloc( ram_amt );
@@ -116,28 +124,43 @@ restart:
 			return -7;
 		}
 		fclose( f );
-		
+
 		if( dtb_file_name )
 		{
-			f = fopen( dtb_file_name, "rb" );
-			if( !f || ferror( f ) )
+			if( strcmp( dtb_file_name, "disable" ) == 0 )
 			{
-				fprintf( stderr, "Error: \"%s\" not found\n", dtb_file_name );
-				return -5;
+				// No DTB reading.
 			}
-			fseek( f, 0, SEEK_END );
-			long dtblen = ftell( f );
-			fseek( f, 0, SEEK_SET );
-			dtb_ptr = ram_amt - dtblen - sizeof( struct MiniRV32IMAState );
-			if( fread( ram_image + dtb_ptr, dtblen - sizeof( struct MiniRV32IMAState ), 1, f ) != 1 )
+			else
 			{
-				fprintf( stderr, "Error: Could not open dtb \"%s\"\n", dtb_file_name );
-				return -9;
+				f = fopen( dtb_file_name, "rb" );
+				if( !f || ferror( f ) )
+				{
+					fprintf( stderr, "Error: \"%s\" not found\n", dtb_file_name );
+					return -5;
+				}
+				fseek( f, 0, SEEK_END );
+				long dtblen = ftell( f );
+				fseek( f, 0, SEEK_SET );
+				dtb_ptr = ram_amt - dtblen - sizeof( struct MiniRV32IMAState );
+				if( fread( ram_image + dtb_ptr, dtblen - sizeof( struct MiniRV32IMAState ), 1, f ) != 1 )
+				{
+					fprintf( stderr, "Error: Could not open dtb \"%s\"\n", dtb_file_name );
+					return -9;
+				}
+				fclose( f );
 			}
-			fclose( f );
 		}
+		else
+		{
+			// Load a default dtb.
+			dtb_ptr = ram_amt - sizeof(default64mbdtc) - sizeof( struct MiniRV32IMAState );
+			memcpy( ram_image + dtb_ptr, default64mbdtc, sizeof( default64mbdtc ) );
+		}
+
 	}
 
+	// Override keyboard, so we can capture all keyboard input for the VM.
 	{
 		struct termios term;
 		tcgetattr(0, &term);
@@ -224,8 +247,9 @@ static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumbe
 	}
 }
 
-static void reset_keyboard()
+static void ResetKeyboardInput()
 {
+	// Re-enable echo, etc. on keyboard.
 	struct termios term;
 	tcgetattr(0, &term);
 	term.c_lflag |= ICANON | ECHO;
@@ -327,4 +351,5 @@ static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value
 		}
 	}
 }
+
 

@@ -18,8 +18,8 @@ everything : toolchain
 	make -C buildroot
 	make -C mini-rv32ima testkern
 
-basictest :
-	make -C mini-rv32ima test_with_image
+testdlimage :
+	make -C mini-rv32ima testdlimage
 
 testbare :
 	make -C baremetal
