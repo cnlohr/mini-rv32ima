@@ -33,13 +33,23 @@ I'm working on a really really simple C Risc-V emultor. So simple it doesn't eve
 
 ## How
 
-To test this, you will need a Linux box with `git build-essential` and whatever other requirements are in place for [buildroot](https://buildroot.org/).
+Windows instructions (Just playing with the image)
  * Clone this repo.
+ * Install or have TinyCC.  [Powershell Installer](https://github.com/cntools/Install-TCC) or [Regular Windows Installer](https://github.com/cnlohr/tinycc-win64-installer/releases/tag/v0_0.9.27)
+ * Run `winrun.ps` in the `windows` folder.
+
+Linux instructions (both): 
+ * Clone this repo.
+ * Install `git build-essential` and/or whatever other requirements are in place for [buildroot](https://buildroot.org/).
  * `make testdlimage`
  * It automatically downloads the image (~1MB) and runs the emulator.
  * Should be up and running in about 2.5s depending on internet speed.
 
-...And you can almost run Linux in Linux in Linux (though not quite yet).
+You can do in-depth work on Linux by:
+ * `make everything`
+
+If you want to play with the bare metal system, see below, or if you have the toolchain installed, just:
+ * `make testbare`
 
 ## Questions?
  * Why not rv64?
@@ -84,34 +94,16 @@ If you want to use bare metal to build your binaries so you don't need buildroot
 sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
 ```
 
-
-## General notes:
- * QEMU out-of-box.
- * Pi's Linux
- * https://github.com/cnlohr/riscv_emufun/commit/2f09cdeb378dc0215c07eb63f5a6fb43dbbf1871#diff-b48ccd795ae9aced07d022bf010bf9376232c4d78210c3113d90a8d349c59b3dL440
- * Making the kernel assembly to dig through.
- * touch kernel_config && make
- * Debugging process.
- * test-driven-development.
-   -> Pitfalls.
- * Talk about converting the style to HLSL
- * People are working on relocatable ELFs.
- * MMIO
- * Background on RV32IMA
- * Being able to run it elsewhere.
- * Mention assembly language. (Baremetal)
- * Talk about Makefiles.
- * Mention license and file at the end - encourage others.
-
-
 ## WSL notes.
  * You can't have spaces in your paths.  Try this:
 	`PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/mnt/c/Windows/system32:/snap/bin`
 
-
-
-
 ## Attic
+
+
+## General notes:
+ * https://github.com/cnlohr/riscv_emufun/commit/2f09cdeb378dc0215c07eb63f5a6fb43dbbf1871#diff-b48ccd795ae9aced07d022bf010bf9376232c4d78210c3113d90a8d349c59b3dL440
+
 
 (These things don't currently work)
 
