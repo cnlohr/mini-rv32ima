@@ -2,8 +2,8 @@ EXE:=coremark
 
 all : $(EXE)
 
-CC:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc
-OBJDUMP:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump
+CC:=../../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc
+OBJDUMP:=../../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump
 
 CFLAGS?=-march=rv32ima -mabi=ilp32 -fPIE -pie -Os -s -static
 LDFLAGS?=-Wl,-elf2flt="-r -s 32768"
@@ -23,7 +23,7 @@ $(EXE) : $(APPFOLDER)
 	$(OBJDUMP) -S $@.gdb > $@.S
 
 deploy : $(EXE)
-	cp $^ ../buildroot/output/target/root
+	cp $^ ../../buildroot/output/target/root
 
 rebuild : deploy
 	make -C.. toolchain 

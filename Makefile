@@ -13,8 +13,8 @@ toolchain : buildroot
 
 everything : toolchain
 	make -C hello_linux deploy
-	make -C duktapetest deploy
-	make -C coremark deploy
+	make -C packages/duktapetest deploy
+	make -C packages/coremark deploy
 	make -C buildroot
 	make -C mini-rv32ima testkern
 
@@ -35,7 +35,7 @@ test_with_qemu :
 
 # SBI doesn't work for some reason?
 #opensbi_firmware : 
-#	make -C opensbi PLATFORM=../../this_opensbi/platform/riscv_emufun I=../this_opensbi/install B=../this_opensbi/build CROSS_COMPILE=riscv64-unknown-elf- PLATFORM_RISCV_ISA=rv32ima PLATFORM_RISCV_XLEN=32
+#	make -C opensbi PLATFORM=../../packages/this_opensbi/platform/riscv_emufun I=../packages/this_opensbi/install B=../packages/this_opensbi/build CROSS_COMPILE=riscv64-unknown-elf- PLATFORM_RISCV_ISA=rv32ima PLATFORM_RISCV_XLEN=32
 #	# ./mini-rv32ima -i ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.bin
 #	# ../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.elf > fw_payload.S
 

@@ -9,8 +9,8 @@ DUKTAPEVER:=duktape-2.7.0
 DUKTAPEBLD:=src-noline
 CFLAGS+=-I$(DUKTAPEVER)/$(DUKTAPEBLD)
 
-CC:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc
-OBJDUMP:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump
+CC:=../../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc
+OBJDUMP:=../../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump
 
 C_S+=$(DUKTAPEVER)/$(DUKTAPEBLD)/duktape.c
 C_S+=$(DUKTAPEVER)/examples/cmdline/duk_cmdline.c
@@ -22,7 +22,7 @@ $(EXE) : $(DUKTAPEVER)
 	$(OBJDUMP) -S $@.gdb > $@.S
 
 deploy : $(EXE) fizzbuzz.js
-	cp $^ ../buildroot/output/target/root
+	cp $^ ../../buildroot/output/target/root
 
 rebuild : deploy
 	make -C.. toolchain 
