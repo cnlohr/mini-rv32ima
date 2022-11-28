@@ -94,6 +94,10 @@ If you want to use bare metal to build your binaries so you don't need buildroot
 sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
 ```
 
+## Links
+ * "Hackaday Supercon 2022: Charles Lohr - Assembly in 2022: Yes! We Still Use it and Here's Why" : https://www.youtube.com/watch?v=Gelf0AyVGy4
+ 
+
 ## WSL notes.
  * You can't have spaces in your paths.  Try this:
 	`PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/mnt/c/Windows/system32:/snap/bin`
