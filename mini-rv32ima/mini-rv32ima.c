@@ -92,11 +92,6 @@ int main( int argc, char ** argv )
 		return 1;
 	}
 
-	if( !dtb_file_name )
-	{
-		fprintf( stderr, "Warning: Are you sure you don't want to use dtb file?\n" );
-	}
-
 	ram_image = malloc( ram_amt );
 
 restart:
@@ -261,7 +256,41 @@ static int IsKBHit()
 
 static int ReadKBByte()
 {
-	return _getch();
+	// This code is kind of tricky, but used to convert windows arrow keys
+	// to VT100 arrow keys.
+	static int is_escape_sequence = 0;
+	int r;
+	if( is_escape_sequence == 1 )
+	{
+		is_escape_sequence++;
+		return '[';
+	}
+
+	r = _getch();
+
+	if( is_escape_sequence )
+	{
+		is_escape_sequence = 0;
+		switch( r )
+		{
+			case 'H': return 'A'; // Up
+			case 'P': return 'B'; // Down
+			case 'K': return 'D'; // Left
+			case 'M': return 'C'; // Right
+			case 'G': return 'H'; // Home
+			case 'O': return 'F'; // End
+			default: return r; // Unknown code.
+		}
+	}
+	else
+	{
+		switch( r )
+		{
+			case 13: return 10; //cr->lf
+			case 224: is_escape_sequence = 1; return 27; // Escape arrow keys
+			default: return r;
+		}
+	}
 }
 
 #else
