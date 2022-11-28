@@ -5,9 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <sys/ioctl.h>
-#include <termios.h>
-#include <unistd.h>
 
 #include "default64mbdtc.h"
 
@@ -17,10 +14,14 @@ uint32_t ram_amt = 64*1024*1024;
 static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber );
 static uint64_t GetTimeMicroseconds();
 static void ResetKeyboardInput();
+static void CaptureKeyboardInput();
 static uint32_t HandleException( uint32_t ir, uint32_t retval );
 static uint32_t HandleControlStore( uint32_t addy, uint32_t val );
 static uint32_t HandleControlLoad( uint32_t addy );
 static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value );
+static void MiniSleep();
+static int IsKBHit();
+static int ReadKBByte();
 
 // This is the functionality we want to override in the emulator.
 //  think of this as the way the emulator's processor is connected to the outside world.
@@ -39,8 +40,6 @@ uint8_t * ram_image = 0;
 
 int main( int argc, char ** argv )
 {
-	// Hook exit, because we want to re-enable keyboard.
-	atexit(ResetKeyboardInput);
 	int i;
 	long long instct = -1;
 	int show_help = 0;
@@ -160,13 +159,7 @@ restart:
 
 	}
 
-	// Override keyboard, so we can capture all keyboard input for the VM.
-	{
-		struct termios term;
-		tcgetattr(0, &term);
-		term.c_lflag &= ~(ICANON | ECHO); // Disable echo as well
-		tcsetattr(0, TCSANOW, &term);
-	}
+	CaptureKeyboardInput();
 
 	// The core lives at the end of RAM.
 	struct MiniRV32IMAState * core = (struct MiniRV32IMAState *)(ram_image + ram_amt - sizeof( struct MiniRV32IMAState ));
@@ -213,7 +206,7 @@ restart:
 		switch( ret )
 		{
 			case 0: break;
-			case 1: usleep(100); break;
+			case 1: MiniSleep(); break;
 			case 0x7777: goto restart;	//syscon code for restart
 			case 0x5555: return 0;		//syscon code for power-off
 			default: printf( "Unknown failure\n" ); break;
@@ -222,29 +215,72 @@ restart:
 }
 
 
-static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber )
+//////////////////////////////////////////////////////////////////////////
+// Platform-specific functionality
+//////////////////////////////////////////////////////////////////////////
+
+
+#if defined(WINDOWS) || defined(WIN32) || defined(_WIN32)
+
+#include <windows.h>
+#include <conio.h>
+
+#define strtoll _strtoi64
+
+static void CaptureKeyboardInput()
 {
-	if( !number || !number[0] ) return defaultNumber;
-	int radix = 10;
-	if( number[0] == '0' )
-	{
-		char nc = number[1];
-		number+=2;
-		if( nc == 0 ) return 0;
-		else if( nc == 'x' ) radix = 16;
-		else if( nc == 'b' ) radix = 2;
-		else { number--; radix = 8; }
-	}
-	char * endptr;
-	uint64_t ret = strtoll( number, &endptr, radix );
-	if( endptr == number )
-	{
-		return defaultNumber;
-	}
-	else
-	{
-		return ret;
-	}
+	system(""); // Poorly documented tick: Enable VT100 Windows mode.
+}
+
+static void ResetKeyboardInput()
+{
+}
+
+static void MiniSleep()
+{
+	Sleep(1);
+}
+
+static uint64_t GetTimeMicroseconds()
+{
+	static LARGE_INTEGER lpf;
+	LARGE_INTEGER li;
+
+	if( !lpf.QuadPart )
+		QueryPerformanceFrequency( &lpf );
+
+	QueryPerformanceCounter( &li );
+	return ((uint64_t)li.QuadPart * 1000000LL) / (uint64_t)lpf.QuadPart;
+}
+
+
+static int IsKBHit()
+{
+	return _kbhit();
+}
+
+static int ReadKBByte()
+{
+	return _getch();
+}
+
+#else
+
+#include <sys/ioctl.h>
+#include <termios.h>
+#include <unistd.h>
+#include <sys/time.h>
+
+// Override keyboard, so we can capture all keyboard input for the VM.
+static void CaptureKeyboardInput()
+{
+	// Hook exit, because we want to re-enable keyboard.
+	atexit(ResetKeyboardInput);
+
+	struct termios term;
+	tcgetattr(0, &term);
+	term.c_lflag &= ~(ICANON | ECHO); // Disable echo as well
+	tcsetattr(0, TCSANOW, &term);
 }
 
 static void ResetKeyboardInput()
@@ -256,30 +292,42 @@ static void ResetKeyboardInput()
 	tcsetattr(0, TCSANOW, &term);
 }
 
-#if defined(WINDOWS) || defined(WIN32) || defined(_WIN32)
-#include <windows.h>
-static uint64_t GetTimeMicroseconds()
+static void MiniSleep()
 {
-	static LARGE_INTEGER lpf;
-	LARGE_INTEGER li;
-
-	if( !lpf.QuadPart )
-	{
-		QueryPerformanceFrequency( &lpf );
-	}
-
-	QueryPerformanceCounter( &li );
-	return ((uint64_t)li.QuadPart * 1000000LL) / (uint64_t)lpf.QuadPart;
+	usleep(500);
 }
-#else
-#include <sys/time.h>
+
 static uint64_t GetTimeMicroseconds()
 {
 	struct timeval tv;
 	gettimeofday( &tv, 0 );
 	return tv.tv_usec + ((uint64_t)(tv.tv_sec)) * 1000000LL;
 }
+
+
+static int ReadKBByte()
+{
+	char rxchar = 0;
+	if( read(fileno(stdin), (char*)&rxchar, 1) > 0 ) // Tricky: getchar can't be used with arrow keys.
+		return rxchar;
+	else
+		return 0;
+}
+
+static int IsKBHit()
+{
+	int byteswaiting;
+	ioctl(0, FIONREAD, &byteswaiting);
+	return !!byteswaiting;
+}
+
+
 #endif
+
+
+//////////////////////////////////////////////////////////////////////////
+// Rest of functions functionality
+//////////////////////////////////////////////////////////////////////////
 
 static uint32_t HandleException( uint32_t ir, uint32_t code )
 {
@@ -293,9 +341,7 @@ static uint32_t HandleException( uint32_t ir, uint32_t code )
 
 static uint32_t HandleControlStore( uint32_t addy, uint32_t val )
 {
-	//Special: UART (8250)
-	//If writing a byte, allow it to flow into output.
-	if( addy == 0x10000000 )
+	if( addy == 0x10000000 ) //UART 8250 / 16550 Data Buffer
 	{
 		printf( "%c", val );
 		fflush( stdout );
@@ -306,17 +352,11 @@ static uint32_t HandleControlStore( uint32_t addy, uint32_t val )
 
 static uint32_t HandleControlLoad( uint32_t addy )
 {
-	// Emulating a 8250 UART
-	int byteswaiting;
-	ioctl(0, FIONREAD, &byteswaiting);
+	// Emulating a 8250 / 16550 UART
 	if( addy == 0x10000005 )
-		return 0x60 | !!byteswaiting;
-	else if( addy == 0x10000000 && byteswaiting )
-	{
-		char rxchar = 0;
-		if( read(fileno(stdin), (char*)&rxchar, 1) > 0 ) // Tricky: getchar can't be used with arrow keys.
-			return rxchar;
-	}
+		return 0x60 | IsKBHit();
+	else if( addy == 0x10000000 && IsKBHit() )
+		return ReadKBByte();
 	return 0;
 }
 
@@ -342,8 +382,7 @@ static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value
 		}
 		if( ptrend != ptrstart )
 		{
-			int ret = write( fileno(stdout), image + ptrstart, ptrend - ptrstart );
-			ret = ret;
+			fwrite( image + ptrstart, ptrend - ptrstart, 1, stdout );
 		}
 		else
 		{
@@ -352,4 +391,27 @@ static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value
 	}
 }
 
-
+static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber )
+{
+	if( !number || !number[0] ) return defaultNumber;
+	int radix = 10;
+	if( number[0] == '0' )
+	{
+		char nc = number[1];
+		number+=2;
+		if( nc == 0 ) return 0;
+		else if( nc == 'x' ) radix = 16;
+		else if( nc == 'b' ) radix = 2;
+		else { number--; radix = 8; }
+	}
+	char * endptr;
+	uint64_t ret = strtoll( number, &endptr, radix );
+	if( endptr == number )
+	{
+		return defaultNumber;
+	}
+	else
+	{
+		return ret;
+	}
+}

@@ -16,15 +16,14 @@ testbare : mini-rv32ima
 	./mini-rv32ima -f ../baremetal/baremetal.bin
 
 DownloadedImage :
-	wget https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/linux-5.18.0-rv32nommu-cnl-1.tar.bz2 -O linux-5.18.0-rv32nommu-cnl-1.tar.bz2
-	tar xjvf linux-5.18.0-rv32nommu-cnl-1.tar.bz2
+	wget https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/linux-5.18.0-rv32nommu-cnl-1.zip -O linux-5.18.0-rv32nommu-cnl-1.zip
+	unzip linux-5.18.0-rv32nommu-cnl-1.zip
 	mv Image DownloadedImage
 
 testdlimage : mini-rv32ima DownloadedImage
 	./mini-rv32ima -f DownloadedImage
 
 # For dumping specific binaries and info.
-
 # SBI is not currently working
 #testsbi : mini-rv32ima
 #	./mini-rv32ima -f ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.bin
@@ -32,11 +31,13 @@ testdlimage : mini-rv32ima DownloadedImage
 #	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.elf >fw_payload.S
 
 
-#bintoh : 
-#	echo -ne "#include <stdio.h>\nint main( int argc, char ** argv ) { if( argc == 1 ) return -1; int c, p = 0; printf( \"static unsigned char %s[] = {\\n\", argv[1] ); while( ( c = getchar() ) != EOF ) printf( \"0x%02x,%c\", c, (((p++)&15)==15)?'\\n':' '); printf( \\"};\\n\" ); }" > bintoh.c
-#	gcc bintoh.c -o bintoh
-#sixtyfourmb.dtb.h : sixtyfourmb.dtb bintoh
-#	./bintoh default64mbdtb < $< > $@
+# For converting the .dtb into a .h file for embeddding.
+bintoh :
+	echo -ne "#include <stdio.h>\nint main( int argc, char ** argv ) { if( argc == 1 ) return -1; int c, p = 0; printf( \"static unsigned char %s[] = {\\n\", argv[1] ); while( ( c = getchar() ) != EOF ) printf( \"0x%02x,%c\", c, (((p++)&15)==15)?'\\n':' '); printf( \\"};\\n\" ); }" > bintoh.c
+	gcc bintoh.c -o bintoh
+
+sixtyfourmb.dtb.h : sixtyfourmb.dtb bintoh
+	./bintoh default64mbdtb < $< > $@
 
 dumpkern :
 	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S ../buildroot/output/build/linux-5.18/vmlinux >fw_payload.S
