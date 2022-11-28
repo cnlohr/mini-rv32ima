@@ -8,9 +8,9 @@ all : $(TARGETS)
 
 PREFIX:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-
 CFLAGS:=-fno-stack-protector
-CFLAGS+=-static-libgcc -ffunction-sections -fdata-sections  -Wl,-static -fdata-sections -ffunction-sections -Wl,--gc-sections
+CFLAGS+=-static-libgcc -fdata-sections -ffunction-sections
 CFLAGS+=-g -Os -march=rv32ima -mabi=ilp32 -static
-LDFLAGS:= -T flatfile.lds -nostdlib
+LDFLAGS:= -T flatfile.lds -nostdlib -Wl,--gc-sections
 
 $(PROJECT).elf : $(PROJECT).c $(PROJECT).S
 	$(PREFIX)gcc -o $@ $^ $(CFLAGS) $(LDFLAGS)

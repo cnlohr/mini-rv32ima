@@ -2,10 +2,15 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+// These are going to be bound to memory addresses in the linker script.
 extern uint32_t SYSCON;
 extern uint32_t TIMERL;
-extern void asm_demo_func();
 
+// This is just a definition for a symbol found in the .S file.
+void asm_demo_func();
+
+// These will not turn into function calls, but instead will find a way
+// of writing the assembly in-line
 static void lprint( const char * s )
 {
 	asm volatile( "csrrw x0, 0x138, %0\n" : : "r" (s));
@@ -33,7 +38,7 @@ int main()
 	lprint("Hello world from RV32 land.\n");
 	lprint("main is at: ");
 	pprint( (intptr_t)main );
-	lprint("\n");
+	lprint("\nAssembly code: ");
 	asm_demo_func();
 	lprint("\n");
 
