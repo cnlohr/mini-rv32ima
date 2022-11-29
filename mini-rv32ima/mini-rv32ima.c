@@ -148,8 +148,8 @@ restart:
 		else
 		{
 			// Load a default dtb.
-			dtb_ptr = ram_amt - sizeof(default64mbdtc) - sizeof( struct MiniRV32IMAState );
-			memcpy( ram_image + dtb_ptr, default64mbdtc, sizeof( default64mbdtc ) );
+			dtb_ptr = ram_amt - sizeof(default64mbdtb) - sizeof( struct MiniRV32IMAState );
+			memcpy( ram_image + dtb_ptr, default64mbdtb, sizeof( default64mbdtb ) );
 		}
 
 	}
@@ -162,6 +162,16 @@ restart:
 	core->regs[10] = 0x00; //hart ID
 	core->regs[11] = dtb_ptr?(dtb_ptr+MINIRV32_RAM_IMAGE_OFFSET):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
 	core->extraflags |= 3; // Machine-mode.
+
+	{
+		// Update system ram size in DTB (but if and only if we're using the default DTB)
+		uint32_t * dtb = (uint32_t*)(ram_image + dtb_ptr);
+		if( dtb[0x13c/4] == 0x00c0ff03 )
+		{
+			uint32_t validram = dtb_ptr;
+			dtb[0x13c/4] = (validram>>24) | ((( validram >> 16 ) & 0xff) << 8 ) | (((validram>>8) & 0xff ) << 16 ) | ( ( validram & 0xff) << 24 );
+		}
+	}
 
 	// Image is loaded.
 	uint64_t rt;
