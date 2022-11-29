@@ -33,7 +33,7 @@ testdlimage : mini-rv32ima DownloadedImage
 
 # For converting the .dtb into a .h file for embeddding.
 bintoh :
-	echo "#include <stdio.h>\nint main(int argc,char ** argv) {if(argc==1) return -1; int c, p=0; printf( \"static const unsigned char %s[] = {\", argv[1] ); while( ( c = getchar() ) != EOF ) printf( \"0x%02x,%c\", c, (((p++)&15)==15)?10:' '); printf( \"};\" ); }" > bintoh.c
+	echo -e "#include <stdio.h>\nint main(int argc,char ** argv) {if(argc==1) return -1; int c, p=0; printf( \"static const unsigned char %s[] = {\", argv[1] ); while( ( c = getchar() ) != EOF ) printf( \"0x%02x,%c\", c, (((p++)&15)==15)?10:' '); printf( \"};\" ); }" > bintoh.c
 	gcc bintoh.c -o bintoh
 
 default64mbdtc.h : sixtyfourmb.dtb bintoh
