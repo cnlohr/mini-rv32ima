@@ -180,8 +180,10 @@ restart:
 	core->regs[11] = dtb_ptr?(dtb_ptr+MINIRV32_RAM_IMAGE_OFFSET):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
 	core->extraflags |= 3; // Machine-mode.
 
+	if( dtb_file_name == 0 )
 	{
 		// Update system ram size in DTB (but if and only if we're using the default DTB)
+		// Warning - this will need to be updated if the skeleton DTB is ever modified.
 		uint32_t * dtb = (uint32_t*)(ram_image + dtb_ptr);
 		if( dtb[0x13c/4] == 0x00c0ff03 )
 		{
