@@ -59,7 +59,7 @@ If you want to play with the bare metal system, see below, or if you have the to
  * Why not rv64?
    * Because then I can't run it as easily in a pixel shader if I ever hope to.
  * Can I add an MMU?
-   * Yes.  It actually probably would be too difficult.
+   * Yes.  It actually probably wouldn't be too difficult.
  * Should I add an MMU?
    * No.  It is important to further support for nommu systems to empower minimal Risc-V designs!
 
