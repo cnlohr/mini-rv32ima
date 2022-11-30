@@ -43,6 +43,7 @@ int main( int argc, char ** argv )
 	int i;
 	long long instct = -1;
 	int show_help = 0;
+	int time_divisor = 1;
 	int single_step = 0;
 	int dtb_ptr = 0;
 	const char * image_file_name = 0;
@@ -75,6 +76,11 @@ int main( int argc, char ** argv )
 			case 's':
 				single_step = 1;
 				break;
+			case 't':
+				i++;
+				if( i < argc )
+					time_divisor = SimpleReadNumberUInt( argv[i], -1 );
+				break;
 			default:
 				show_help = 1;
 				break;
@@ -93,6 +99,11 @@ int main( int argc, char ** argv )
 	}
 
 	ram_image = malloc( ram_amt );
+	if( !ram_image )
+	{
+		fprintf( stderr, "Error: could not allocate system image.\n" );
+		return -4;
+	}
 
 restart:
 	{
@@ -175,12 +186,12 @@ restart:
 
 	// Image is loaded.
 	uint64_t rt;
-	uint64_t lastTime = GetTimeMicroseconds();
+	uint64_t lastTime = GetTimeMicroseconds()/time_divisor;
 	int instrs_per_flip = single_step?1:1024;
 	for( rt = 0; rt < instct/instrs_per_flip+1 || instct < 0; rt++ )
 	{
 		uint32_t elapsedUs = 0;
-		elapsedUs = GetTimeMicroseconds() - lastTime;
+		elapsedUs = GetTimeMicroseconds()/time_divisor - lastTime;
 		lastTime += elapsedUs;
 
 		if( single_step )
