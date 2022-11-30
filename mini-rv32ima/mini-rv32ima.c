@@ -11,7 +11,7 @@
 // Just default RAM amount is 64MB.
 uint32_t ram_amt = 64*1024*1024;
 
-static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber );
+static int64_t SimpleReadNumberInt( const char * number, int64_t defaultNumber );
 static uint64_t GetTimeMicroseconds();
 static void ResetKeyboardInput();
 static void CaptureKeyboardInput();
@@ -44,6 +44,7 @@ int main( int argc, char ** argv )
 	long long instct = -1;
 	int show_help = 0;
 	int time_divisor = 1;
+	int do_sleep = 1;
 	int single_step = 0;
 	int dtb_ptr = 0;
 	const char * image_file_name = 0;
@@ -58,12 +59,12 @@ int main( int argc, char ** argv )
 			case 'm':
 				i++;
 				if( i < argc )
-					ram_amt = SimpleReadNumberUInt( argv[i], ram_amt );
+					ram_amt = SimpleReadNumberInt( argv[i], ram_amt );
 				break;
 			case 'c':
 				i++;
 				if( i < argc )
-					instct = SimpleReadNumberUInt( argv[i], -1 );
+					instct = SimpleReadNumberInt( argv[i], -1 );
 				break;
 			case 'f':
 				i++;
@@ -79,7 +80,7 @@ int main( int argc, char ** argv )
 			case 't':
 				i++;
 				if( i < argc )
-					time_divisor = SimpleReadNumberUInt( argv[i], -1 );
+					time_divisor = SimpleReadNumberInt( argv[i], 1 );
 				break;
 			default:
 				show_help = 1;
@@ -91,11 +92,16 @@ int main( int argc, char ** argv )
 			show_help = 1;
 		}
 	}
-
-	if( show_help || image_file_name == 0 )
+	if( show_help || image_file_name == 0 || time_divisor == 0 )
 	{
 		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file, or 'disable']\n\t-c instruction count\n\t-s single step with full processor state\n" );
 		return 1;
+	}
+
+	if( time_divisor < 0 )
+	{
+		time_divisor = -time_divisor;
+		do_sleep = 0;
 	}
 
 	ram_image = malloc( ram_amt );
@@ -222,7 +228,7 @@ restart:
 		switch( ret )
 		{
 			case 0: break;
-			case 1: MiniSleep(); break;
+			case 1: if( do_sleep ) MiniSleep(); break;
 			case 0x7777: goto restart;	//syscon code for restart
 			case 0x5555: return 0;		//syscon code for power-off
 			default: printf( "Unknown failure\n" ); break;
@@ -441,7 +447,7 @@ static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value
 	}
 }
 
-static uint64_t SimpleReadNumberUInt( const char * number, uint64_t defaultNumber )
+static int64_t SimpleReadNumberInt( const char * number, int64_t defaultNumber )
 {
 	if( !number || !number[0] ) return defaultNumber;
 	int radix = 10;
