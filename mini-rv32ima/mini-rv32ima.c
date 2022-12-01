@@ -10,6 +10,7 @@
 
 // Just default RAM amount is 64MB.
 uint32_t ram_amt = 64*1024*1024;
+int fail_on_all_faults = 0;
 
 static int64_t SimpleReadNumberInt( const char * number, int64_t defaultNumber );
 static uint64_t GetTimeMicroseconds();
@@ -29,7 +30,7 @@ static int ReadKBByte();
 #define MINIRV32_DECORATE  static
 #define MINI_RV32_RAM_SIZE ram_amt
 #define MINIRV32_IMPLEMENTATION
-#define MINIRV32_POSTEXEC( pc, ir, retval ) { if( retval > 0 ) retval = HandleException( ir, retval ); }
+#define MINIRV32_POSTEXEC( pc, ir, retval ) { if( retval > 0 ) { if( fail_on_all_faults ) { printf( "FAULT\n" ); return 3; } else retval = HandleException( ir, retval ); } }
 #define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( HandleControlStore( addy, val ) ) return val;
 #define MINIRV32_HANDLE_MEM_LOAD_CONTROL( addy, rval ) rval = HandleControlLoad( addy );
 #define MINIRV32_OTHERCSR_WRITE( csrno, value ) HandleOtherCSRWrite( image, csrno, value );
@@ -37,6 +38,7 @@ static int ReadKBByte();
 #include "mini-rv32ima.h"
 
 uint8_t * ram_image = 0;
+struct MiniRV32IMAState * core;
 
 static void DumpState( struct MiniRV32IMAState * core, uint8_t * ram_image );
 
@@ -69,6 +71,7 @@ int main( int argc, char ** argv )
 				case 'l': param_continue = 1; fixed_update = 1; break;
 				case 'p': param_continue = 1; do_sleep = 0; break;
 				case 's': param_continue = 1; single_step = 1; break;
+				case 'd': param_continue = 1; fail_on_all_faults = 1; break; 
 				case 't': if( ++i < argc ) time_divisor = SimpleReadNumberInt( argv[i], 1 ); break;
 				default:
 					if( param_continue )
@@ -88,7 +91,7 @@ int main( int argc, char ** argv )
 	}
 	if( show_help || image_file_name == 0 || time_divisor <= 0 )
 	{
-		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file, or 'disable']\n\t-c instruction count\n\t-s single step with full processor state\n" );
+		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file, or 'disable']\n\t-c instruction count\n\t-s single step with full processor state\n\t-t time divion base\n\t-l lock time base to instruction count\n\t-p disable sleep when wfi\n\t-d fail out immediately on all faults\n" );
 		return 1;
 	}
 
@@ -162,7 +165,7 @@ restart:
 	CaptureKeyboardInput();
 
 	// The core lives at the end of RAM.
-	struct MiniRV32IMAState * core = (struct MiniRV32IMAState *)(ram_image + ram_amt - sizeof( struct MiniRV32IMAState ));
+	core = (struct MiniRV32IMAState *)(ram_image + ram_amt - sizeof( struct MiniRV32IMAState ));
 	core->pc = MINIRV32_RAM_IMAGE_OFFSET;
 	core->regs[10] = 0x00; //hart ID
 	core->regs[11] = dtb_ptr?(dtb_ptr+MINIRV32_RAM_IMAGE_OFFSET):0; //dtb_pa (Must be valid pointer) (Should be pointer to dtb)
@@ -202,6 +205,7 @@ restart:
 		{
 			case 0: break;
 			case 1: if( do_sleep ) MiniSleep(); *this_ccount += instrs_per_flip; break;
+			case 3: instct = 0; break;
 			case 0x7777: goto restart;	//syscon code for restart
 			case 0x5555: printf( "POWEROFF@0x%08x%08x\n", core->cycleh, core->cyclel ); return 0; //syscon code for power-off
 			default: printf( "Unknown failure\n" ); break;
@@ -300,13 +304,21 @@ static int ReadKBByte()
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/time.h>
+
+static void CtrlC()
+{
+	DumpState( core, ram_image);
+	exit( 0 );
+}
 
 // Override keyboard, so we can capture all keyboard input for the VM.
 static void CaptureKeyboardInput()
 {
 	// Hook exit, because we want to re-enable keyboard.
 	atexit(ResetKeyboardInput);
+	signal(SIGINT, CtrlC);
 
 	struct termios term;
 	tcgetattr(0, &term);
@@ -339,14 +351,17 @@ static uint64_t GetTimeMicroseconds()
 static int ReadKBByte()
 {
 	char rxchar = 0;
-	if( read(fileno(stdin), (char*)&rxchar, 1) > 0 ) // Tricky: getchar can't be used with arrow keys.
+	int rread = read(fileno(stdin), (char*)&rxchar, 1);
+	if( rread > 0 ) // Tricky: getchar can't be used with arrow keys.
 		return rxchar;
 	else
-		return 0;
+		return 0xffffffff;
 }
 
 static int IsKBHit()
 {
+	if( write( fileno(stdin), 0, 0 ) != 0 ) return 1; // Is end-of-file.
+
 	int byteswaiting;
 	ioctl(0, FIONREAD, &byteswaiting);
 	return !!byteswaiting;
