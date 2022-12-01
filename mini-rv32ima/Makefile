@@ -6,8 +6,23 @@ mini-rv32ima : mini-rv32ima.c mini-rv32ima.h default64mbdtc.h
 	gcc -o $@.tiny $< -Os -ffunction-sections -fdata-sections -Wl,--gc-sections -fwhole-program -s
 
 mini-rv32ima.flt : mini-rv32ima.c mini-rv32ima.h
-	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc -O4 -s -march=rv32ima -mabi=ilp32 -fPIC $< -Wl,-elf2flt=-r -o $@
-	## Deply with: make clean all && cp mini-rv32ima.flt* ../buildroot/output/target/root/ && make -C .. toolchain && make testkern
+	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc -O4 -funroll-loops -s -march=rv32ima -mabi=ilp32 -fPIC $< -Wl,-elf2flt=-r -o $@
+
+# Deply with:  make clean all && cp mini-rv32ima.flt ../buildroot/output/target/root/ && make -C .. toolchain && make testkern	
+# Profiling:   make clean all && cp mini-rv32ima.flt ../buildroot/output/target/root/ && make -C .. toolchain && ./mini-rv32ima -f ../buildroot/output/images/Image -plt 4 -m 0xffff000
+# Don't forget, for inner machine: mmzone.h / #define MAX_ORDER 10 // Outer: 14? 13?
+# SLocal Script
+##!/bin/sh
+#case "$1" in
+#  start)
+#    /root/mini-rv32ima.flt -f /root/Image.StartAndShut.0xf00000 -plt 4 -m 0xfff000
+#    poweroff
+#    ;;
+#  stop)
+#  	echo "Stop."
+#    ;;
+#poweroff
+
 
 testkern : mini-rv32ima
 	./mini-rv32ima -f ../buildroot/output/images/Image
@@ -29,7 +44,6 @@ testdlimage : mini-rv32ima DownloadedImage
 #	./mini-rv32ima -f ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.bin
 #dumpsbi : 
 #	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.elf >fw_payload.S
-
 
 # For converting the .dtb into a .h file for embeddding.
 bintoh :

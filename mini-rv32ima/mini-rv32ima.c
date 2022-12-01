@@ -38,12 +38,15 @@ static int ReadKBByte();
 
 uint8_t * ram_image = 0;
 
+static void DumpState( struct MiniRV32IMAState * core, uint8_t * ram_image );
+
 int main( int argc, char ** argv )
 {
 	int i;
 	long long instct = -1;
 	int show_help = 0;
 	int time_divisor = 1;
+	int fixed_update = 0;
 	int do_sleep = 1;
 	int single_step = 0;
 	int dtb_ptr = 0;
@@ -52,56 +55,41 @@ int main( int argc, char ** argv )
 	for( i = 1; i < argc; i++ )
 	{
 		const char * param = argv[i];
-		if( param[0] == '-' )
+		int param_continue = 0; // Can combine parameters, like -lpt x
+		do
 		{
-			switch( param[1] )
+			if( param[0] == '-' || param_continue )
 			{
-			case 'm':
-				i++;
-				if( i < argc )
-					ram_amt = SimpleReadNumberInt( argv[i], ram_amt );
-				break;
-			case 'c':
-				i++;
-				if( i < argc )
-					instct = SimpleReadNumberInt( argv[i], -1 );
-				break;
-			case 'f':
-				i++;
-				image_file_name = (i<argc)?argv[i]:0;
-				break;
-			case 'b':
-				i++;
-				dtb_file_name = (i<argc)?argv[i]:0;
-				break;
-			case 's':
-				single_step = 1;
-				break;
-			case 't':
-				i++;
-				if( i < argc )
-					time_divisor = SimpleReadNumberInt( argv[i], 1 );
-				break;
-			default:
+				switch( param[1] )
+				{
+				case 'm': if( ++i < argc ) ram_amt = SimpleReadNumberInt( argv[i], ram_amt ); break;
+				case 'c': if( ++i < argc ) instct = SimpleReadNumberInt( argv[i], -1 ); break;
+				case 'f': image_file_name = (++i<argc)?argv[i]:0; break;
+				case 'b': dtb_file_name = (++i<argc)?argv[i]:0; break;
+				case 'l': param_continue = 1; fixed_update = 1; break;
+				case 'p': param_continue = 1; do_sleep = 0; break;
+				case 's': param_continue = 1; single_step = 1; break;
+				case 't': if( ++i < argc ) time_divisor = SimpleReadNumberInt( argv[i], 1 ); break;
+				default:
+					if( param_continue )
+						param_continue = 0;
+					else
+						show_help = 1;
+					break;
+				}
+			}
+			else
+			{
 				show_help = 1;
 				break;
 			}
-		}
-		else
-		{
-			show_help = 1;
-		}
+			param++;
+		} while( param_continue );
 	}
-	if( show_help || image_file_name == 0 || time_divisor == 0 )
+	if( show_help || image_file_name == 0 || time_divisor <= 0 )
 	{
 		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file, or 'disable']\n\t-c instruction count\n\t-s single step with full processor state\n" );
 		return 1;
-	}
-
-	if( time_divisor < 0 )
-	{
-		time_divisor = -time_divisor;
-		do_sleep = 0;
 	}
 
 	ram_image = malloc( ram_amt );
@@ -194,48 +182,33 @@ restart:
 
 	// Image is loaded.
 	uint64_t rt;
-	uint64_t lastTime = GetTimeMicroseconds()/time_divisor;
+	uint64_t lastTime = (fixed_update)?0:(GetTimeMicroseconds()/time_divisor);
 	int instrs_per_flip = single_step?1:1024;
-	for( rt = 0; rt < instct/instrs_per_flip+1 || instct < 0; rt++ )
+	for( rt = 0; rt < instct+1 || instct < 0; rt += instrs_per_flip )
 	{
+		uint64_t * this_ccount = ((uint64_t*)&core->cyclel);
 		uint32_t elapsedUs = 0;
-		elapsedUs = GetTimeMicroseconds()/time_divisor - lastTime;
+		if( fixed_update )
+			elapsedUs = *this_ccount / time_divisor - lastTime;
+		else
+			elapsedUs = GetTimeMicroseconds()/time_divisor - lastTime;
 		lastTime += elapsedUs;
 
 		if( single_step )
-		{
-			uint32_t pc = core->pc;
-			uint32_t pc_offset = pc - MINIRV32_RAM_IMAGE_OFFSET;
-			uint32_t ir = 0;
-			printf( "PC: %08x ", pc );
-			if( pc_offset < MINIRV32_RAM_IMAGE_OFFSET-3 )
-			{
-				ir = *((uint32_t*)(&((uint8_t*)ram_image)[pc_offset]));
-				printf( "[0x%08x] ", ir ); 
-			}
-			else
-			{
-				printf( "[xxxxxxxxxx] " ); 
-			}
-			uint32_t * regs = core->regs;
-			printf( "Z:%08x ra:%08x sp:%08x gp:%08x tp:%08x t0:%08x t1:%08x t2:%08x s0:%08x s1:%08x a0:%08x a1:%08x a2:%08x a3:%08x a4:%08x a5:%08x ",
-				regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
-				regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15] );
-			printf( "a6:%08x a7:%08x s2:%08x s3:%08x s4:%08x s5:%08x s6:%08x s7:%08x s8:%08x s9:%08x s10:%08x s11:%08x t3:%08x t4:%08x t5:%08x t6:%08x\n",
-				regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23],
-				regs[24], regs[25], regs[26], regs[27], regs[28], regs[29], regs[30], regs[31] );
-		}
+			DumpState( core, ram_image);
 
 		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs, instrs_per_flip ); // Execute upto 1024 cycles before breaking out.
 		switch( ret )
 		{
 			case 0: break;
-			case 1: if( do_sleep ) MiniSleep(); break;
+			case 1: if( do_sleep ) MiniSleep(); *this_ccount += instrs_per_flip; break;
 			case 0x7777: goto restart;	//syscon code for restart
-			case 0x5555: return 0;		//syscon code for power-off
+			case 0x5555: printf( "POWEROFF@0x%08x%08x\n", core->cycleh, core->cyclel ); return 0; //syscon code for power-off
 			default: printf( "Unknown failure\n" ); break;
 		}
 	}
+
+	DumpState( core, ram_image);
 }
 
 
@@ -473,3 +446,27 @@ static int64_t SimpleReadNumberInt( const char * number, int64_t defaultNumber )
 		return ret;
 	}
 }
+
+static void DumpState( struct MiniRV32IMAState * core, uint8_t * ram_image )
+{
+	uint32_t pc = core->pc;
+	uint32_t pc_offset = pc - MINIRV32_RAM_IMAGE_OFFSET;
+	uint32_t ir = 0;
+
+	printf( "PC: %08x ", pc );
+	if( pc_offset >= 0 && pc_offset < ram_amt - 3 )
+	{
+		ir = *((uint32_t*)(&((uint8_t*)ram_image)[pc_offset]));
+		printf( "[0x%08x] ", ir ); 
+	}
+	else
+		printf( "[xxxxxxxxxx] " ); 
+	uint32_t * regs = core->regs;
+	printf( "Z:%08x ra:%08x sp:%08x gp:%08x tp:%08x t0:%08x t1:%08x t2:%08x s0:%08x s1:%08x a0:%08x a1:%08x a2:%08x a3:%08x a4:%08x a5:%08x ",
+		regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7],
+		regs[8], regs[9], regs[10], regs[11], regs[12], regs[13], regs[14], regs[15] );
+	printf( "a6:%08x a7:%08x s2:%08x s3:%08x s4:%08x s5:%08x s6:%08x s7:%08x s8:%08x s9:%08x s10:%08x s11:%08x t3:%08x t4:%08x t5:%08x t6:%08x\n",
+		regs[16], regs[17], regs[18], regs[19], regs[20], regs[21], regs[22], regs[23],
+		regs[24], regs[25], regs[26], regs[27], regs[28], regs[29], regs[30], regs[31] );
+}
+
