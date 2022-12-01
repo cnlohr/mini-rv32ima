@@ -8,20 +8,19 @@ mini-rv32ima : mini-rv32ima.c mini-rv32ima.h default64mbdtc.h
 mini-rv32ima.flt : mini-rv32ima.c mini-rv32ima.h
 	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc -O4 -funroll-loops -s -march=rv32ima -mabi=ilp32 -fPIC $< -Wl,-elf2flt=-r -o $@
 
-# Deply with:  make clean all && cp mini-rv32ima.flt ../buildroot/output/target/root/ && make -C .. toolchain && make testkern	
-# Profiling:   make clean all && cp mini-rv32ima.flt ../buildroot/output/target/root/ && make -C .. toolchain && ./mini-rv32ima -f ../buildroot/output/images/Image -plt 4 -m 0xffff000
-# Don't forget, for inner machine: mmzone.h / #define MAX_ORDER 10 // Outer: 14? 13?
-# SLocal Script
-##!/bin/sh
-#case "$1" in
-#  start)
-#    /root/mini-rv32ima.flt -f /root/Image.StartAndShut.0xf00000 -plt 4 -m 0xfff000
-#    poweroff
-#    ;;
-#  stop)
-#  	echo "Stop."
-#    ;;
-#poweroff
+# Deply with:  make clean all && cp mini-rv32ima.flt ../buildroot/output/target/root/ && make -C .. toolchain && make testkern
+
+profile : Image.ProfileTest
+	echo "#!/bin/sh" > ../buildroot/output/target/etc/init.d/SLocal
+	echo 'if [ "$$1" = "start" ]; then /root/mini-rv32ima.flt -f /root/Image.ProfileTest -plt 4 -m 0xfff000; poweroff; fi' >> ../buildroot/output/target/etc/init.d/SLocal
+	chmod +x ../buildroot/output/target/etc/init.d/SLocal
+	cp Image.ProfileTest ../buildroot/output/target/root/
+	make clean all && cp mini-rv32ima.flt ../buildroot/output/target/root/ && make -C .. toolchain && ./mini-rv32ima -f ../buildroot/output/images/Image -plt 4 -m 0x4000000
+	echo "Be sure to record the immediately above value."
+
+Image.ProfileTest :
+	wget https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/Image.ProfileTest-linux-5.18.0-rv32nommu.zip
+	unzip Image.ProfileTest-linux-5.18.0-rv32nommu.zip
 
 
 testkern : mini-rv32ima

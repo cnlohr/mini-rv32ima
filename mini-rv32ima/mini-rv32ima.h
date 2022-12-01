@@ -71,14 +71,14 @@ struct MiniRV32IMAState
 	uint32_t regs[32];
 
 	uint32_t pc;
-	uint32_t cycleh;
-	uint32_t cyclel;
 	uint32_t mstatus;
+	uint32_t cyclel;
+	uint32_t cycleh;
 
-	uint32_t timerh;
 	uint32_t timerl;
-	uint32_t timermatchh;
+	uint32_t timerh;
 	uint32_t timermatchl;
+	uint32_t timermatchh;
 
 	uint32_t mscratch;
 	uint32_t mtvec;

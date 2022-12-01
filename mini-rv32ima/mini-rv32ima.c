@@ -347,9 +347,11 @@ static uint64_t GetTimeMicroseconds()
 	return tv.tv_usec + ((uint64_t)(tv.tv_sec)) * 1000000LL;
 }
 
+static int is_eofd;
 
 static int ReadKBByte()
 {
+	if( is_eofd ) return 0xffffffff;
 	char rxchar = 0;
 	int rread = read(fileno(stdin), (char*)&rxchar, 1);
 	if( rread > 0 ) // Tricky: getchar can't be used with arrow keys.
@@ -360,8 +362,8 @@ static int ReadKBByte()
 
 static int IsKBHit()
 {
-	if( write( fileno(stdin), 0, 0 ) != 0 ) return 1; // Is end-of-file.
-
+	if( is_eofd ) return 0;
+	if( write( fileno(stdin), 0, 0 ) != 0 ) { is_eofd = 1; return 1; } // Is end-of-file.
 	int byteswaiting;
 	ioctl(0, FIONREAD, &byteswaiting);
 	return !!byteswaiting;
