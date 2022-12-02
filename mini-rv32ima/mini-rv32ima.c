@@ -423,19 +423,15 @@ static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value
 		//Print "string"
 		uint32_t ptrstart = value - MINIRV32_RAM_IMAGE_OFFSET;
 		uint32_t ptrend = ptrstart;
+		if( ptrstart >= ram_amt )
+			printf( "DEBUG PASSED INVALID PTR (%08x)\n", value );
 		while( ptrend < ram_amt )
 		{
 			if( image[ptrend] == 0 ) break;
 			ptrend++;
 		}
 		if( ptrend != ptrstart )
-		{
 			fwrite( image + ptrstart, ptrend - ptrstart, 1, stdout );
-		}
-		else
-		{
-			printf( "DEBUG PASSED INVALID PTR (%08x)\n", value );
-		}
 	}
 }
 
