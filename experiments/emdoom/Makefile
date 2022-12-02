@@ -1,0 +1,36 @@
+all : build
+
+test : build
+	cp embeddeddoom/src/emdoom ../../buildroot/output/target/root
+	make -C ../.. toolchain
+	make -C ../../mini-rv32ima mini-rv32ima
+	../../mini-rv32ima/mini-rv32ima -f ../../buildroot/output/images/Image -m 0x3000000
+
+launch : 
+	../../mini-rv32ima/mini-rv32ima -f ../../buildroot/output/images/Image -m 0x3000000
+
+build : embeddeddoom
+	CC=../../../../buildroot/output/host/usr/bin/riscv32-buildroot-linux-uclibc-gcc CFLAGS="-mabi=ilp32 -fPIE -pie" CFLAGS_FINAL="-mabi=ilp32 -fPIE -pie -static -march=rv32ima -O4 -s -g -DNORMALUNIX -DLINUX -DMAXPLAYERS=1 -DDISABLE_NETWORK -static-libgcc -DSET_MEMORY_DEBUG=0 -fdata-sections -ffunction-sections" LDFLAGS='-Wl,-elf2flt="-r -s 36000" -static -Wl,-Map=../../output.map -Wl,--gc-sections' LIBS="" CS="../../video_console.c ../../extra_assembly.S" make -C embeddeddoom/src
+	../../buildroot/output/host/usr/bin/riscv32-buildroot-linux-uclibc-size -A embeddeddoom/src/emdoom.gdb
+	../../buildroot/output/host/usr/bin/riscv32-buildroot-linux-uclibc-objdump -S embeddeddoom/src/emdoom.gdb > emdoom_listing.txt
+
+#
+#   -DRANGECHECK
+
+
+# Only for desktop testing, almost never use.
+desktop : embeddeddoom
+	CFLAGS="-m32" CFLAGS_FINAL="-m32 -DRANGECHECK -DNORMALUNIX -DLINUX -DMAXPLAYERS=1 -DDISABLE_NETWORK -fdata-sections -ffunction-sections -DSET_MEMORY_DEBUG=0 -DIS_ON_DESKTOP_NOT_RV_EMULATOR -fsanitize=address -static-libasan -g" LDFLAGS='-Wl,--gc-sections' LIBS="" CS="../../video_console.c" make -C embeddeddoom/src
+
+
+# -T ../../flatfile.lds
+# ../../startup.S
+
+# 
+
+embeddeddoom :
+	git clone https://github.com/cnlohr/embeddeddoom
+
+clean :
+	rm -rf *.o *~ output.map emdoom_listing.txt
+	make -C embeddeddoom/src clean
