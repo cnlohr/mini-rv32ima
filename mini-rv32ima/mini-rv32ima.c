@@ -354,18 +354,19 @@ static int ReadKBByte()
 	if( is_eofd ) return 0xffffffff;
 	char rxchar = 0;
 	int rread = read(fileno(stdin), (char*)&rxchar, 1);
+
 	if( rread > 0 ) // Tricky: getchar can't be used with arrow keys.
 		return rxchar;
 	else
-		return 0xffffffff;
+		return -1;
 }
 
 static int IsKBHit()
 {
-	if( is_eofd ) return 0;
-	if( write( fileno(stdin), 0, 0 ) != 0 ) { is_eofd = 1; return 1; } // Is end-of-file.
+	if( is_eofd ) return -1;
 	int byteswaiting;
 	ioctl(0, FIONREAD, &byteswaiting);
+	if( !byteswaiting && write( fileno(stdin), 0, 0 ) != 0 ) { is_eofd = 1; return -1; } // Is end-of-file for 
 	return !!byteswaiting;
 }
 
