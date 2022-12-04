@@ -138,3 +138,19 @@ make
 
 ### Extra links
  * Clear outline of CSRs: https://five-embeddev.com/riscv-isa-manual/latest/priv-csrs.html
+
+### Using custom build
+
+Where yminpatch is the patch from the mailing list.
+```
+rm -rf buildroot
+git clone git://git.buildroot.net/buildroot
+cd buildroot
+git am < ../yminpatch.txt
+make qemu_riscv32_nommu_virt_defconfig
+make
+# Or use our configs.
+```
+
+Note: For emdoom you will need to modify include/linux/mmzone.h and change MAX_ORDER to 13.
+

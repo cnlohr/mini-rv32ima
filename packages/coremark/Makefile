@@ -26,7 +26,7 @@ deploy : $(EXE)
 	cp $^ ../../buildroot/output/target/root
 
 rebuild : deploy
-	make -C.. toolchain 
+	make -C../.. toolchain 
 
 # sudo apt-get install node node-js-yaml node-yamlish python-yaml
 
