@@ -10,6 +10,11 @@ LDFLAGS:=-Wl,-elf2flt=-r
 
 C_S+=hello_linux.c
 
+test : deploy
+	make -C .. toolchain
+	make -C ../mini-rv32ima mini-rv32ima
+	../mini-rv32ima/mini-rv32ima -f ../buildroot/output/images/Image
+
 hello_linux : hello_linux.c
 	$(CC) $(CFLAGS) $(C_S) $(LDFLAGS) -o $@
 	$(OBJDUMP) -S $@.gdb > $@.S
