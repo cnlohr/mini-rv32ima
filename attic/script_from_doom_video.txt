@@ -1,0 +1,75 @@
+A week ago I released my really tiny RISC-V emulator.  It was just complicated enough to run Linux.  It’s gotten a lot of traction.  People like Joshua Ashton have used it as a template for writing their own minimal RISC-V emulators.  Many people have been asking me, “Can your emulator run Doom?” After some tinkering, I found out that in its original state, {{no}}.  Doom needs to write to a graphics output device which my emulator, as it stands, doesn’t have. And, as it turned out, there was even a bug lurking deep in my emulator that Doom hit.  Once all of that resolved, it turned out that Doom could indeed work!
+
+Six years ago I started working on “Embedded Doom” or “Emdoom”, where my goal was to make a truly embedded port of Doom.  One that was extremely simple with everything compiled in.  And, one that could run on RAM-constrained systems.  And to that effect I mostly succeeded as it should be able to run on systems with less than 512kB of RAM.
+
+Maybe someday I’ll make a video deep diving into some of the cooler parts of Doom that I found when porting this 6 years ago, for now I’m interested in porting this to run on my RISC-V emulator. The most interesting blockers were that I wanted a way to accept input and a way to output the video of the game without making my emulator any more sophisticated.
+
+Thankfully, the user input and video driver for Doom are all centered in i_video.c.  This file contains the basic I/O for the game, so I can put all of my code specific to this platform there.  For keyboard input, re-used the code I wrote for the emulator and started to work on a way to do character video output instead of graphical output.
+
+One annoyance is that all of the content for Doom revolves around a 320x200 pixel screen, and I am not about to re-create all of the content (though it would be appreciated if you did to make it possible to render to a lower resolution.) BUT, we can just ignore 7/8ths of the pixels and sample out a 160x50 pixels.  We can use ANSI codes to send a foreground (text) and background color. If a pixel is really bright, we can treat the foreground color like an LSB and the background color like an MSB.  We then use ANSI codes to set the cursor’s position to the top left of the screen and can begin scanning through the pixels. If a character’s foreground or background color is different than the previously outputted one, we can use the ANSI codes to change the color of that pixel. If the color is the same, we can just print a character.
+
+For those not in the know ANSI, or VT100, codes are sequences of characters you can print and they will tell the terminal to do things like set the cursor position, set/disable bold, foreground/background color, or even make the terminal go {{bonk}}.  While the origin of escape codes have been debated, arguably back to the 1870s with Baudot code. The syntax we use today was formalized in 1975 with the VT100.  Windows dragged its feet until 2016 when they made ANSI codes a first-class citizen in Windows command-line apps.  You can switch to ANSI escape mode in Windows with the command “system(“”)” which works in all console applications- even Python!
+
+
+I actually prototyped this video output and player input module on my regular Desktop Linux system in a regular terminal before going the RISC-V version.
+
+If we wanted to use the emulated Linux terminal output in the kernel, this would be PAINFULLY slow.  But there’s nothing stopping us from just writing to the hard-coded address 0x10,000,000 to output our codes.  And considering we’re going to be outputting  8k characters + color updates for around 40kB per frame, it matters that we go fast.
+
+Before I could start trying to run this in my emulator, I was stopped by bugs that were introduced when I tried to further optimize DOOM.  Notably removing network code and making it possible to change player count.
+
+Part of that was that I wanted to change the number of max players from 4 to MAX_PLAYERS, so that allocated arrays could be smaller.  I knew of some places that needed to be updated in code so I fixed those.  But I didn’t realize there were more. On my desktop it seemed like everything worked fine but the cracks started to appear.  I started seeing some things that shouldn’t be possible happening.
+
+I got the hint that it was memory corruption of some kind because I printed everywhere that a specific variable was updated, but somehow, it’s value was still changing.  So, it had to be other code overwriting this variable in RAM.
+
+I wanted to talk about several techniques I’ve used when debugging these weird problems.
+
+First, I used a .map file to see a map of everything in RAM. I found the variable that was inexplicably being changed and I could see right before, there was the array “playeringame.”  Hmmm.  It wouldn’t be hard to search the code for all cases where playeringame was modified.
+
+Next I would normally use Valgrind which is great for memory leaks, finding uninitialized variables and access faults. But, because Doom only compiles to 32-bit, Valgrind was a dead end.
+
+Next up: libasan, or the “Address Sanitizer” by compiling with “-fsanitize=address” “-static-libasan” GCC emits a lot more code to make sure everything it’s doing is kosher.  Running libasan actually did discover a bug, which I quickly patched, but for some reason didn’t identify this bug, only some of the effects caused because of it.
+
+To complete the quartet of debugging tools, I opened GDB, and added a memory-change breakpoint on the variable that was being corrupted and ran the program.  The first time the breakpoint was hit, it was because the variable was actually being changed.  But the next time the breakpoint was hit it had nothing to do with the variable I was watching. I had nabbed the buffer overflow in the act.
+
+Thanks to a little bit of elbow grease, and two quick bug fixes, I saved a couple of bytes of ram and everything worked.
+
+It was now time to run EmDoom on my RISC-V emulator.
+
+If I use the system and target the flat file image, we can just use almost the same compile flags as we used for hello_linux, and emdoom just gloms everything together into a single binary file and much to my surprise it ran on the first try.
+
+Well, until I tried to start the game.
+
+Some people think NOMMU means no protection at all.  Quite the contrary. Most memory access violations are to addresses below 0x10,000,000 or above 0xf0000000 - we can catch those.  In spite of our emulator being the size of a walnut, we can do the proper thing and percolate traps back up to the Linux running inside the VM.  This also works for all other types of traps like invalid opcodes, ebreak, unaligned access, etc.  The emulated kernel can properly handle printing the core dump and crashing the program in the virtualized environment (and print this mildly helpful message to our kernel log!)
+
+Anyway, we did get an access violation.  Was it the WFI?  Was it the todo about not knowing the privilege level for traps? Maybe not enough stack? {No, no, and no}
+
+One of the “optimizations” I made was to turn off the extra checks Doom can do. Turning on RANGECHECK showed an assert that ought not be hit.
+
+As I tracked the problem, eventually I found a call to FixedMul and it looked like that function was misbehaving.
+
+{pause}
+
+Yeahh.
+
+This makes me cringe because of a separate bug having to do with 64-bit math that I never got to the bottom of.  So, let’s roll up our sleeves. It's time to find and fix this bug.
+
+Let’s do our objdump trick to get the assembly.
+
+MULH, that is a very rare instruction to see.  It’s used when multiplying two 32-bit numbers to get the most significant 32-bits and discard the lower bits when multiplying 32-bit numbers. But it’s supposed to operate on signed numbers.
+
+I had to debug the input and output of each assembly instruction before I was able to finally identify the problem.
+
+Do you see it?
+Registers are always stored as 32-bit unsigned numbers.  When we convert this to a 64-bit signed number, GCC doesn’t know to do the sign-extension, and instead of multiplying by -5 for instance, we are now multiplying by 4,294,967,291.
+
+Interestingly, because math, this is only an issue for using negative numbers, and specifically the MULH command.
+
+If we typecast first to an int32_t no actual operations are happening, but GCC now knows that we should be multiplying by a negative number.
+
+After a 2.5 hour debugging session pulling out my hair, 3 lines of code changed and everything just was {chef's kiss}
+
+We’re only getting about 25FPS, but mostly because we’re using a text terminal to output on.  Perf details can be addressed at a later time. Point is, from here on out, whenever anyone asks if my tiny RISC-V emulator runs Doom, I can finally say {yes}.
+
+… even if pressing “back” causes the player to launch forward as if fired out of a cannon for some reason?
+
+
