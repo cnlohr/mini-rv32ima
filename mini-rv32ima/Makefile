@@ -15,7 +15,7 @@ profile : Image.ProfileTest
 	echo 'if [ "$$1" = "start" ]; then /root/mini-rv32ima.flt -f /root/Image.ProfileTest -plt 4 -m 0xfff000; poweroff; fi' >> ../buildroot/output/target/etc/init.d/SLocal
 	chmod +x ../buildroot/output/target/etc/init.d/SLocal
 	cp Image.ProfileTest ../buildroot/output/target/root/
-	make clean all && cp mini-rv32ima.flt ../buildroot/output/target/root/ && make -C .. toolchain && ./mini-rv32ima -f ../buildroot/output/images/Image -plt 4 -m 0x4000000
+	make clean all && cp mini-rv32ima.flt ../buildroot/output/target/root/ && make -C .. toolchain && ./mini-rv32ima -f ../buildroot/output/images/Image -plt 4 -m 0x6000000
 	echo "Be sure to record the immediately above value."
 
 Image.ProfileTest :
@@ -24,7 +24,7 @@ Image.ProfileTest :
 
 
 testkern : mini-rv32ima
-	./mini-rv32ima -f ../buildroot/output/images/Image
+	./mini-rv32ima -f ../buildroot/output/images/Image -m 0x6000000
 
 testbare : mini-rv32ima
 	./mini-rv32ima -f ../baremetal/baremetal.bin
