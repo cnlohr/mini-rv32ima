@@ -22,6 +22,12 @@ Image.ProfileTest :
 	wget https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/Image.ProfileTest-linux-5.18.0-rv32nommu.zip
 	unzip Image.ProfileTest-linux-5.18.0-rv32nommu.zip
 
+Image-emdoom-MAX_ORDER_14 :
+	wget https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/Image-emdoom-MAX_ORDER_14.zip
+	unzip Image-emdoom-MAX_ORDER_14.zip
+
+testdoom : Image-emdoom-MAX_ORDER_14 mini-rv32ima
+	./mini-rv32ima -f Image-emdoom-MAX_ORDER_14 -m 0x3000000
 
 testkern : mini-rv32ima
 	./mini-rv32ima -f ../buildroot/output/images/Image -m 0x6000000
