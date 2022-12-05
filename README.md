@@ -58,6 +58,10 @@ You can do in-depth work on Linux by:
 If you want to play with the bare metal system, see below, or if you have the toolchain installed, just:
  * `make testbare`
 
+If you just want to play emdoom, and use the prebuilt image:
+ * On Windows, run `windows\winrundoom.ps1`
+ * On Linux, `cd mini-rv32ima`, and type `make testdoom`
+
 ## Questions?
  * Why not rv64?
    * Because then I can't run it as easily in a pixel shader if I ever hope to.
