@@ -1,9 +1,10 @@
 $archive = 'Image-emdoom-MAX_ORDER_14.zip';
+$image = 'Image-emdoom-MAX_ORDER_14';
 
-if( !(Test-Path -Path Image) )
+if( !(Test-Path -Path $image) )
 {
 	Invoke-WebRequest -Uri https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/$archive -UseBasicParsing -OutFile $archive;
-	Expand-Archive Image-emdoom-MAX_ORDER_14.zip -DestinationPath . -ErrorAction SilentlyContinue;
+	Expand-Archive $archive -DestinationPath . -ErrorAction SilentlyContinue;
 }
 
 $compiler = "tcc";
@@ -17,7 +18,7 @@ if( !(Get-Command $compiler -ErrorAction Stop) )
 
 if( $? )
 {
-	.\mini-rv32ima.exe -f Image
+	.\mini-rv32ima.exe -f $image
 }
 
 
