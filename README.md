@@ -42,6 +42,9 @@ Windows instructions (Just playing with the image)
  * Install or have TinyCC.  [Powershell Installer](https://github.com/cntools/Install-TCC) or [Regular Windows Installer](https://github.com/cnlohr/tinycc-win64-installer/releases/tag/v0_0.9.27)
  * Run `winrun.ps` in the `windows` folder.
 
+WSL (For full toolchain and image build:
+ * You will need to remove all spaces from your path i.e. `export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/mnt/c/Windows/system32:/snap/bin` and continue the instructions.  P.S. What in the world was Windows thinking, putting a space between "Program" and "Files"??!?
+
 Linux instructions (both): 
  * Clone this repo.
  * Install `git build-essential` and/or whatever other requirements are in place for [buildroot](https://buildroot.org/).
@@ -101,11 +104,6 @@ sudo apt-get install gcc-multilib gcc-riscv64-unknown-elf make
 ## Links
  * "Hackaday Supercon 2022: Charles Lohr - Assembly in 2022: Yes! We Still Use it and Here's Why" : https://www.youtube.com/watch?v=Gelf0AyVGy4
  
-
-## WSL notes.
- * You can't have spaces in your paths.  Try this:
-	`PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/mnt/c/Windows/system32:/snap/bin`
-
 ## Attic
 
 
