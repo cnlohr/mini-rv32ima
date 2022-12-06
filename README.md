@@ -2,7 +2,7 @@
 
 Click below for the YouTube video introducing this project:
 
-[![Writing a Really Tiny RISC-V Emulator](https://img.youtube.com/vi/YT5vB3UqU_E/0.jpg)](https://www.youtube.com/watch?v=YT5vB3UqU_E)
+[![Writing a Really Tiny RISC-V Emulator](https://img.youtube.com/vi/YT5vB3UqU_E/0.jpg)](https://www.youtube.com/watch?v=YT5vB3UqU_E) [![But Will It Run Doom?](https://img.youtube.com/vi/uZMNK17VCMU/0.jpg)](https://www.youtube.com/watch?v=uZMNK17VCMU) 
 
 ## What
 
@@ -58,6 +58,10 @@ You can do in-depth work on Linux by:
 If you want to play with the bare metal system, see below, or if you have the toolchain installed, just:
  * `make testbare`
 
+If you just want to play emdoom, and use the prebuilt image:
+ * On Windows, run `windows\winrundoom.ps1`
+ * On Linux, `cd mini-rv32ima`, and type `make testdoom`
+
 ## Questions?
  * Why not rv64?
    * Because then I can't run it as easily in a pixel shader if I ever hope to.
@@ -95,6 +99,11 @@ If you want to build the kernel yourself:
  * About 20 minutes.  (Or 4+ hours if you're on [Windows Subsytem for Linux 2](https://github.com/microsoft/WSL/issues/4197))
  * And you should be dropped into a Linux busybox shell with some little tools that were compiled here.
 
+## Emdoom notes
+ * Emdoom building is in the `experiments/emdoom` folder
+ * You *MUST* build your kernel with `MAX_ORDER` set to >12 in `buildroot/output/build/linux-5.19/include/linux/mmzone.h` if you are building your own image.
+ * You CAN use the pre-existing image that is described above.
+ * On Windows, it will be very slow.  Not sure why.
 
 If you want to use bare metal to build your binaries so you don't need buildroot, you can use the rv64 gcc in 32-bit mode built into Ubuntu 20.04 and up.
 ```
