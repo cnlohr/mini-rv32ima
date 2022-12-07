@@ -191,7 +191,28 @@ void I_FinishUpdate (void)
 	cts[1] = '[';
 	cts[4] = 'm';
 	cts[5] = 0;
+
+#ifdef TERM256
+	int colour_find_rgb(u_char r, u_char g, u_char b);	// From tmux_colour.c
+
+	const char ascii_shademap[] = " .,:;ox%#@";	// 10
+	const int shademap_div = (256/(sizeof(ascii_shademap)-1));
+	const int rgb_bleach = 4;
+
+	char cts2[13];	// ANSI 256-color set background
+	cts2[0] = 0x1b;
+	cts2[1] = '[';
+	cts2[2] = '4';
+	cts2[3] = '8';
+	cts2[4] = ';';
+	cts2[5] = '5';
+	cts2[6] = ';';
+	cts2[12] = 0x0;
+#else
+	const int rgb_bleach = 32;
+
 	char cts2[2] = { 0, 0 };
+#endif
 
 	char ctsline[128];
 
@@ -204,9 +225,21 @@ void I_FinishUpdate (void)
 		{
 			int lx = x * SCREENWIDTH / lscreenw;
 			int col = screens[0][ lx+ly*SCREENWIDTH];
-			int r = lpalette[col*3+0]+32;
-			int g = lpalette[col*3+1]+32;
-			int b = lpalette[col*3+2]+32;
+			int r = lpalette[col*3+0]+rgb_bleach;
+			int g = lpalette[col*3+1]+rgb_bleach;
+			int b = lpalette[col*3+2]+rgb_bleach;
+
+#ifdef TERM256
+			int i = (r+g+b)/3;
+
+			int tcol = colour_find_rgb(r,g,b);
+			cts2[7] = '0' + tcol/100;			// n (256-color)
+			cts2[8] = '0' + (tcol/10)%10;
+			cts2[9] = '0' + tcol%10;
+			cts2[10] = 'm';
+			cts2[11] = ascii_shademap[i/shademap_div];
+			HWEMIT( cts2 );
+#else
 			int selcolor1 = (!!(r&128)) | (!!(g&128))*2 | (!!(b&128))*4;
 			int selcolor2 = (!!(r&64)) | (!!(g&64))*2 | (!!(b&64))*4;
 			if( selcolor1 != lastcolor1 )
@@ -223,6 +256,7 @@ void I_FinishUpdate (void)
 			}
 			cts2[0] = '0' + col/4;
 			HWEMIT( cts2 );
+#endif
 		}
 	}
 }
