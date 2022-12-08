@@ -27,7 +27,7 @@ It's "fully functional" now in that I can run Linux, apps, etc.  Compile flat bi
 
 ## Why
 
-I'm working on a really really simple C Risc-V emultor. So simple it doesn't even have an MMU (Memory Management Unit). I have a few goals, they include:
+I'm working on a really really simple C Risc-V emulator. So simple it doesn't even have an MMU (Memory Management Unit). I have a few goals, they include:
  * Furthering RV32-NOMMU work to improve Linux support for RV32-NOMMU.  (Imagine if we could run Linux on the $1 ESP32-C3)
  * Learning more about RV32 and writing emulators.
  * Being further inspired by @pimaker's amazing work on [Running Linux in a Pixel Shader](https://blog.pimaker.at/texts/rvc1/) and having the sneaking suspicion performance could be even better!
