@@ -145,6 +145,7 @@ make
 
 ### Extra links
  * Clear outline of CSRs: https://five-embeddev.com/riscv-isa-manual/latest/priv-csrs.html
+ * Fonts used in videos: https://audiolink.dev/
 
 ### Using custom build
 
