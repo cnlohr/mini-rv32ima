@@ -21,7 +21,7 @@ It has a [demo wrapper](https://github.com/cnlohr/riscv_emufun/blob/master/mini-
  * And it only around **250 lines** of code, itself.
  * Compiles down to a **~18kB executable** and only relies on libc.
 
-†: Zifence+RV32A are emulated.  So, tweaks will need to be made if you want to emulate a multiprocessor system with this emulator.
+†: Zifence+RV32A are stubbed.  So, tweaks will need to be made if you want to emulate a multiprocessor system with this emulator.
 
 Just see the `mini-rv32ima` folder.
 
