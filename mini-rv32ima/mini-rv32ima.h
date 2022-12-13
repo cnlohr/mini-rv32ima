@@ -92,7 +92,8 @@ struct MiniRV32IMAState
 	// Note: only a few bits are used.  (Machine = 3, User = 0)
 	// Bits 0..1 = privilege.
 	// Bit 2 = WFI (Wait for interrupt)
-	uint32_t extraflags; 
+	// Bit 3 = Load/Store has a reservation.
+	uint32_t extraflags;
 };
 
 MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count );
@@ -446,8 +447,8 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						uint32_t dowrite = 1;
 						switch( irmid )
 						{
-							case 0b00010: dowrite = 0; break; //LR.W
-							case 0b00011: rval = 0; break; //SC.W (Lie and always say it's good)
+							case 0b00010: dowrite = 0; CSR( extraflags ) |= 8; break; //LR.W
+							case 0b00011: rval = !(CSR( extraflags ) & 8); break; //SC.W (Lie and always say it's good)
 							case 0b00001: break; //AMOSWAP.W
 							case 0b00000: rs2 += rval; break; //AMOADD.W
 							case 0b00100: rs2 ^= rval; break; //AMOXOR.W
@@ -484,8 +485,9 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 		// Handle traps and interrupts.
 		if( trap )
 		{
-			if( trap & 0x80000000 ) // If prefixed with 0x100, it's an interrupt, not a trap.
+			if( trap & 0x80000000 ) // If prefixed with 1 in MSB, it's an interrupt, not a trap.
 			{
+				CSR( extraflags ) &= ~8;
 				SETCSR( mcause, trap );
 				SETCSR( mtval, 0 );
 				pc += 4; // PC needs to point to where the PC will return to.
