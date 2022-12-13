@@ -7,7 +7,7 @@ Click below for the YouTube video introducing this project:
 ## What
 
 mini-rv32ima is a single-file-header, [mini-rv32ima.h](https://github.com/cnlohr/riscv_emufun/blob/master/mini-rv32ima/mini-rv32ima.h), in the [STB Style library](https://github.com/nothings/stb) that:
- * Implements a RISC-V **rv32ima/Zifencei+Zicsr** (and partial su), with CLINT and MMIO.
+ * Implements a RISC-V **rv32ima/Zifencei†+Zicsr** (and partial su), with CLINT and MMIO.
  * Is about **400 lines** of actual code.
  * Has **no dependencies**, not even libc.
  * Is **easily extensible**.  So you can easily add CSRs, instructions, MMIO, etc!
@@ -20,6 +20,8 @@ It has a [demo wrapper](https://github.com/cnlohr/riscv_emufun/blob/master/mini-
  * Implements a CLI, SYSCON, UART, DTB and Kernel image loading.
  * And it only around **250 lines** of code, itself.
  * Compiles down to a **~18kB executable** and only relies on libc.
+
+†: Zifence+RV32A are emulated.  So, tweaks will need to be made if you want to emulate a multiprocessor system with this emulator.
 
 Just see the `mini-rv32ima` folder.
 
