@@ -35,7 +35,7 @@ I'm working on a really really simple C Risc-V emulator. So simple it doesn't ev
  * Being further inspired by @pimaker's amazing work on [Running Linux in a Pixel Shader](https://blog.pimaker.at/texts/rvc1/) and having the sneaking suspicion performance could be even better!
  * Hoping to port it to some weird places.
  * Understand the *most simplistic* system you can run Linux on and trying to push that boundary.
- * Continue to include my [education of people about assembly language].(https://www.youtube.com/watch?v=Gelf0AyVGy4)
+ * Continue to include my [education of people about assembly language](https://www.youtube.com/watch?v=Gelf0AyVGy4).
 
 ## How
 
