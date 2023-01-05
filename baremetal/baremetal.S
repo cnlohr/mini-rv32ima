@@ -5,7 +5,7 @@
 
 .align 4
 _start:
-	lui sp, 0x80100
+	la	sp, _sstack
 	addi	sp,sp,-16
 	sw	ra,12(sp)
 	jal	ra, main
