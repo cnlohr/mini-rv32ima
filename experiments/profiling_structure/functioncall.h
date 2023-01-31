@@ -175,7 +175,7 @@ static inline uint32_t CallStep( struct MiniRV32IMAState * state, uint8_t * imag
 			rsval -= MINIRV32_RAM_IMAGE_OFFSET;
 			if( rsval >= MINI_RV32_RAM_SIZE-3 )
 			{
-				rsval -= MINIRV32_RAM_IMAGE_OFFSET;
+				rsval += MINIRV32_RAM_IMAGE_OFFSET;
 				if( rsval >= 0x10000000 && rsval < 0x12000000 )  // UART, CLNT
 				{
 					if( rsval == 0x1100bffc ) // https://chromitem-soc.readthedocs.io/en/latest/clint.html
@@ -217,7 +217,7 @@ static inline uint32_t CallStep( struct MiniRV32IMAState * state, uint8_t * imag
 
 			if( addy >= MINI_RV32_RAM_SIZE-3 )
 			{
-				addy -= MINIRV32_RAM_IMAGE_OFFSET;
+				addy += MINIRV32_RAM_IMAGE_OFFSET;
 				if( addy >= 0x10000000 && addy < 0x12000000 ) 
 				{
 					// Should be stuff like SYSCON, 8250, CLNT
@@ -234,7 +234,7 @@ static inline uint32_t CallStep( struct MiniRV32IMAState * state, uint8_t * imag
 				}
 				else
 				{
-					SETCSR( mtval, addy + MINIRV32_RAM_IMAGE_OFFSET );
+					SETCSR( mtval, addy );
 					return (7+1); // Store access fault.
 				}
 			}
