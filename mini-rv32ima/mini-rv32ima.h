@@ -88,7 +88,7 @@ struct MiniRV32IMAState
 	uint32_t mepc;
 	uint32_t mtval;
 	uint32_t mcause;
-	
+
 	// Note: only a few bits are used.  (Machine = 3, User = 0)
 	// Bits 0..1 = privilege.
 	// Bit 2 = WFI (Wait for interrupt)
@@ -182,7 +182,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					rdid = 0;
 					switch( ( ir >> 12 ) & 0x7 )
 					{
-						// BEQ, BNE, BLT, BGE, BLTU, BGEU 
+						// BEQ, BNE, BLT, BGE, BLTU, BGEU
 						case 0b000: if( rs1 == rs2 ) pc = immm4; break;
 						case 0b001: if( rs1 != rs2 ) pc = immm4; break;
 						case 0b100: if( rs1 < rs2 ) pc = immm4; break;
@@ -246,7 +246,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					if( addy >= MINI_RV32_RAM_SIZE-3 )
 					{
 						addy += MINIRV32_RAM_IMAGE_OFFSET;
-						if( addy >= 0x10000000 && addy < 0x12000000 ) 
+						if( addy >= 0x10000000 && addy < 0x12000000 )
 						{
 							// Should be stuff like SYSCON, 8250, CLNT
 							if( addy == 0x11004004 ) //CLNT
@@ -297,9 +297,9 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 							case 0b001: rval = ((int64_t)((int32_t)rs1) * (int64_t)((int32_t)rs2)) >> 32; break; // MULH
 							case 0b010: rval = ((int64_t)((int32_t)rs1) * (uint64_t)rs2) >> 32; break; // MULHSU
 							case 0b011: rval = ((uint64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHU
-							case 0b100: if( rs2 == 0 ) rval = -1; else rval = (int32_t)rs1 / (int32_t)rs2; break; // DIV
-							case 0b101: if( rs2 == 0 ) rval = 0xffffffff; else rval = rs1 / rs2; break; // DIVU
-							case 0b110: if( rs2 == 0 ) rval = rs1; else rval = (int32_t)rs1 % (int32_t)rs2; break; // REM
+							case 0b100: if( rs2 == 0 ) rval = -1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? rs1 : ((int32_t)rs1 / (int32_t)rs2); break; // DIV
+              case 0b101: if( rs2 == 0 ) rval = 0xffffffff; else rval = rs1 / rs2; break; // DIVU
+              case 0b110: if( rs2 == 0 ) rval = rs1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? 0 : ((uint32_t)((int32_t)rs1 % (int32_t)rs2)); break; // REM
 							case 0b111: if( rs2 == 0 ) rval = rs1; else rval = rs1 % rs2; break; // REMU
 						}
 					}
@@ -319,7 +319,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					}
 					break;
 				}
-				case 0b0001111: 
+				case 0b0001111:
 					rdid = 0;   // fencetype = (ir >> 12) & 0b111; We ignore fences in this impl.
 					break;
 				case 0b1110011: // Zifencei+Zicsr
@@ -355,7 +355,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						default:
 							MINIRV32_OTHERCSR_READ( csrno, rval );
 							break;
-						}	
+						}
 
 						switch( microop )
 						{
