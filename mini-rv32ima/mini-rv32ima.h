@@ -92,7 +92,7 @@ struct MiniRV32IMAState
 	// Note: only a few bits are used.  (Machine = 3, User = 0)
 	// Bits 0..1 = privilege.
 	// Bit 2 = WFI (Wait for interrupt)
-	// Bit 3 = Load/Store has a reservation.
+	// Bit 3+ = Load/Store reservation LSBs.
 	uint32_t extraflags;
 };
 
@@ -447,8 +447,14 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						uint32_t dowrite = 1;
 						switch( irmid )
 						{
-							case 0b00010: dowrite = 0; CSR( extraflags ) |= 8; break; //LR.W
-							case 0b00011: rval = !(CSR( extraflags ) & 8); break; //SC.W (Lie and always say it's good)
+							case 0b00010: //LR.W
+								dowrite = 0;
+								CSR( extraflags ) = (CSR( extraflags ) & 0b111) | (rs1<<3);
+								break;
+							case 0b00011:  //SC.W (Make sure we have a slot, and, it's valid)
+								rval = ( CSR( extraflags ) >> 3 != ( rs1 & 0x1fffffff ) );  // Validate that our reservation slot is OK.
+								dowrite = !rval; // Only write if slot is valid.
+								break;
 							case 0b00001: break; //AMOSWAP.W
 							case 0b00000: rs2 += rval; break; //AMOADD.W
 							case 0b00100: rs2 ^= rval; break; //AMOXOR.W
@@ -487,7 +493,6 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 		{
 			if( trap & 0x80000000 ) // If prefixed with 1 in MSB, it's an interrupt, not a trap.
 			{
-				CSR( extraflags ) &= ~8;
 				SETCSR( mcause, trap );
 				SETCSR( mtval, 0 );
 				pc += 4; // PC needs to point to where the PC will return to.
@@ -503,9 +508,8 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 			SETCSR( mstatus, (( CSR( mstatus ) & 0x08) << 4) | (( CSR( extraflags ) & 3 ) << 11) );
 			pc = (CSR( mtvec ) - 4);
 
-			// XXX TODO: Do we actually want to check here? Is this correct?
-			if( !(trap & 0x80000000) )
-				CSR( extraflags ) |= 3;
+			// If trapping, always enter machine mode.
+			CSR( extraflags ) |= 3;
 		}
 
 		SETCSR( pc, pc + 4 );
