@@ -13,22 +13,22 @@ void asm_demo_func();
 // of writing the assembly in-line
 static void lprint( const char * s )
 {
-	asm volatile( "csrrw x0, 0x138, %0\n" : : "r" (s));
+	asm volatile( ".option norvc\ncsrrw x0, 0x138, %0\n" : : "r" (s));
 }
 
 static void pprint( intptr_t ptr )
 {
-	asm volatile( "csrrw x0, 0x137, %0\n" : : "r" (ptr));
+	asm volatile( ".option norvc\ncsrrw x0, 0x137, %0\n" : : "r" (ptr));
 }
 
 static void nprint( intptr_t ptr )
 {
-	asm volatile( "csrrw x0, 0x136, %0\n" : : "r" (ptr));
+	asm volatile( ".option norvc\ncsrrw x0, 0x136, %0\n" : : "r" (ptr));
 }
 
 static inline uint32_t get_cyc_count() {
 	uint32_t ccount;
-	asm volatile("csrr %0, 0xC00":"=r" (ccount));
+	asm volatile(".option norvc\ncsrr %0, 0xC00":"=r" (ccount));
 	return ccount;
 }
 
