@@ -20,6 +20,7 @@ static uint32_t HandleException( uint32_t ir, uint32_t retval );
 static uint32_t HandleControlStore( uint32_t addy, uint32_t val );
 static uint32_t HandleControlLoad( uint32_t addy );
 static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value );
+static int32_t HandleOtherCSRRead( uint8_t * image, uint16_t csrno );
 static void MiniSleep();
 static int IsKBHit();
 static int ReadKBByte();
@@ -34,6 +35,7 @@ static int ReadKBByte();
 #define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( HandleControlStore( addy, val ) ) return val;
 #define MINIRV32_HANDLE_MEM_LOAD_CONTROL( addy, rval ) rval = HandleControlLoad( addy );
 #define MINIRV32_OTHERCSR_WRITE( csrno, value ) HandleOtherCSRWrite( image, csrno, value );
+#define MINIRV32_OTHERCSR_READ( csrno, value ) value = HandleOtherCSRRead( image, csrno );
 
 #include "mini-rv32ima.h"
 
@@ -434,6 +436,20 @@ static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value
 		if( ptrend != ptrstart )
 			fwrite( image + ptrstart, ptrend - ptrstart, 1, stdout );
 	}
+	else if( csrno == 0x139 )
+	{
+		putchar( value ); fflush( stdout );
+	}
+}
+
+static int32_t HandleOtherCSRRead( uint8_t * image, uint16_t csrno )
+{
+	if( csrno == 0x140 )
+	{
+		if( !IsKBHit() ) return -1;
+		return ReadKBByte();
+	}
+	return 0;
 }
 
 static int64_t SimpleReadNumberInt( const char * number, int64_t defaultNumber )

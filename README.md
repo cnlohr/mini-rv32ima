@@ -164,3 +164,11 @@ make
 
 Note: For emdoom you will need to modify include/linux/mmzone.h and change MAX_ORDER to 13.
 
+### Buildroot Notes
+
+Add this:
+https://github.com/cnlohr/buildroot/pull/1/commits/bc890f74354e7e2f2b1cf7715f6ef334ff6ed1b2
+
+Use this:
+https://github.com/cnlohr/buildroot/commit/e97714621bfae535d947817e98956b112eb80a75
+

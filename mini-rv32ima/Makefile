@@ -61,6 +61,10 @@ default64mbdtc.h : sixtyfourmb.dtb bintoh
 	# WARNING: sixtyfourmb.dtb MUST hvave at least 16 bytes of buffer room AND be 16-byte aligned.
 	#  dtc -I dts -O dtb -o sixtyfourmb.dtb sixtyfourmb.dts -S 1536
 
+sixtyfourmb.dtb : sixtyfourmb.dts
+	dtc -I dts -O dtb -o $@ $^ -S 1536
+
+
 dumpkern :
 	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S ../buildroot/output/build/linux-5.18/vmlinux >fw_payload.S
 	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -t ../buildroot/output/build/linux-5.18/vmlinux >fw_payload.t
