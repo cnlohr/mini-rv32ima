@@ -57,7 +57,7 @@
 		uart@10000000 {
 			clock-frequency = <0x1000000>;
 			reg = <0x00 0x10000000 0x00 0x100>;
-			compatible = "hvc";
+			compatible = "ns16850";
 		};
 
 		poweroff {

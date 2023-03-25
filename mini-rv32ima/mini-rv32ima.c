@@ -41,6 +41,7 @@ static int ReadKBByte();
 
 uint8_t * ram_image = 0;
 struct MiniRV32IMAState * core;
+const char * kernel_command_line = 0;
 
 static void DumpState( struct MiniRV32IMAState * core, uint8_t * ram_image );
 
@@ -68,6 +69,7 @@ int main( int argc, char ** argv )
 				{
 				case 'm': if( ++i < argc ) ram_amt = SimpleReadNumberInt( argv[i], ram_amt ); break;
 				case 'c': if( ++i < argc ) instct = SimpleReadNumberInt( argv[i], -1 ); break;
+				case 'k': if( ++i < argc ) kernel_command_line = argv[i]; break;
 				case 'f': image_file_name = (++i<argc)?argv[i]:0; break;
 				case 'b': dtb_file_name = (++i<argc)?argv[i]:0; break;
 				case 'l': param_continue = 1; fixed_update = 1; break;
@@ -93,7 +95,7 @@ int main( int argc, char ** argv )
 	}
 	if( show_help || image_file_name == 0 || time_divisor <= 0 )
 	{
-		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-b [dtb file, or 'disable']\n\t-c instruction count\n\t-s single step with full processor state\n\t-t time divion base\n\t-l lock time base to instruction count\n\t-p disable sleep when wfi\n\t-d fail out immediately on all faults\n" );
+		fprintf( stderr, "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running image]\n\t-k [kernel command line]\n\t-b [dtb file, or 'disable']\n\t-c instruction count\n\t-s single step with full processor state\n\t-t time divion base\n\t-l lock time base to instruction count\n\t-p disable sleep when wfi\n\t-d fail out immediately on all faults\n" );
 		return 1;
 	}
 
@@ -160,8 +162,11 @@ restart:
 			// Load a default dtb.
 			dtb_ptr = ram_amt - sizeof(default64mbdtb) - sizeof( struct MiniRV32IMAState );
 			memcpy( ram_image + dtb_ptr, default64mbdtb, sizeof( default64mbdtb ) );
+			if( kernel_command_line )
+			{
+				strncpy( (char*)( ram_image + dtb_ptr + 0xc0 ), kernel_command_line, 54 );
+			}
 		}
-
 	}
 
 	CaptureKeyboardInput();

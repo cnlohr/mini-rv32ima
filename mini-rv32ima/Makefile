@@ -27,10 +27,10 @@ Image-emdoom-MAX_ORDER_14 :
 	unzip Image-emdoom-MAX_ORDER_14.zip
 
 testdoom : Image-emdoom-MAX_ORDER_14 mini-rv32ima
-	./mini-rv32ima -f Image-emdoom-MAX_ORDER_14 -m 0x3000000
+	./mini-rv32ima -f Image-emdoom-MAX_ORDER_14 -m 0x3000000 -k "console=ttyS0"
 
 testkern : mini-rv32ima
-	./mini-rv32ima -f ../buildroot/output/images/Image -m 0x6000000
+	./mini-rv32ima -f ../buildroot/output/images/Image -m 0x6000000 -k "console=hvc0"
 
 testbare : mini-rv32ima
 	./mini-rv32ima -f ../baremetal/baremetal.bin
