@@ -1,9 +1,9 @@
-$archive = 'linux-5.18.0-rv32nommu-cnl-1.zip';
+$archive = 'linux-6.1.14-rv32nommu-cnl-1.zip';
 
 if( !(Test-Path -Path Image) )
 {
 	Invoke-WebRequest -Uri https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/$archive -UseBasicParsing -OutFile $archive;
-	Expand-Archive linux-5.18.0-rv32nommu-cnl-1.zip -DestinationPath . -ErrorAction SilentlyContinue;
+	Expand-Archive linux-6.1.14-rv32nommu-cnl-1.zip -DestinationPath . -ErrorAction SilentlyContinue;
 }
 
 $compiler = "tcc";

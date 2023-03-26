@@ -36,8 +36,8 @@ testbare : mini-rv32ima
 	./mini-rv32ima -f ../baremetal/baremetal.bin
 
 DownloadedImage :
-	wget https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/linux-5.18.0-rv32nommu-cnl-1.zip -O linux-5.18.0-rv32nommu-cnl-1.zip
-	unzip linux-5.18.0-rv32nommu-cnl-1.zip
+	wget https://github.com/cnlohr/mini-rv32ima-images/raw/master/images/linux-6.1.14-rv32nommu-cnl-1.zip -O linux-6.1.14-rv32nommu-cnl-1.zip
+	unzip linux-6.1.14-rv32nommu-cnl-1.zip
 	mv Image DownloadedImage
 
 testdlimage : mini-rv32ima DownloadedImage
