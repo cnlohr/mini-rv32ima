@@ -483,10 +483,9 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 				default: trap = (2+1); // Fault: Invalid opcode.
 			}
 
+			// If there was a trap, do NOT allow register writeback.
 			if( trap )
-			{
 				break;
-			}
 
 			if( rdid )
 			{
