@@ -2,7 +2,7 @@
 # Automatically generated file; DO NOT EDIT.
 # Linux/riscv 6.1.14 Kernel Configuration
 #
-CONFIG_CC_VERSION_TEXT="riscv32-buildroot-linux-uclibc-gcc.br_real (Buildroot 2023.02-139-g0c7ba302bd-dirty) 12.2.0"
+CONFIG_CC_VERSION_TEXT="riscv32-buildroot-linux-uclibc-gcc.br_real (Buildroot -g61a3fe7e) 12.2.0"
 CONFIG_CC_IS_GCC=y
 CONFIG_GCC_VERSION=120200
 CONFIG_CLANG_VERSION=0
@@ -28,7 +28,7 @@ CONFIG_BROKEN_ON_SMP=y
 CONFIG_INIT_ENV_ARG_LIMIT=32
 # CONFIG_COMPILE_TEST is not set
 # CONFIG_WERROR is not set
-CONFIG_LOCALVERSION=""
+CONFIG_LOCALVERSION="mini-rv32ima"
 CONFIG_LOCALVERSION_AUTO=y
 CONFIG_BUILD_SALT=""
 CONFIG_DEFAULT_INIT=""
@@ -580,6 +580,8 @@ CONFIG_SERIAL_CORE_CONSOLE=y
 # CONFIG_SERIAL_NONSTANDARD is not set
 # CONFIG_GOLDFISH_TTY is not set
 # CONFIG_NULL_TTY is not set
+CONFIG_HVC_DRIVER=y
+CONFIG_HVC_RISCV_MINIRV32=y
 # CONFIG_SERIAL_DEV_BUS is not set
 # CONFIG_TTY_PRINTK is not set
 # CONFIG_VIRTIO_CONSOLE is not set
