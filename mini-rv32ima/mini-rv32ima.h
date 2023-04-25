@@ -60,6 +60,8 @@
 	#define MINIRV32_LOAD4( ofs ) *(uint32_t*)(image + ofs)
 	#define MINIRV32_LOAD2( ofs ) *(uint16_t*)(image + ofs)
 	#define MINIRV32_LOAD1( ofs ) *(uint8_t*)(image + ofs)
+	#define MINIRV32_LOAD2_SIGNED( ofs ) *(int16_t*)(image + ofs)
+	#define MINIRV32_LOAD1_SIGNED( ofs ) *(int8_t*)(image + ofs)
 #endif
 
 // As a note: We quouple-ify these, because in HLSL, we will be operating with
@@ -96,16 +98,24 @@ struct MiniRV32IMAState
 	uint32_t extraflags;
 };
 
+#ifndef MINIRV32_STEPPROTO
 MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count );
+#endif
 
 #ifdef MINIRV32_IMPLEMENTATION
 
+#ifndef MINIRV32_CUSTOM_INTERNALS
 #define CSR( x ) state->x
 #define SETCSR( x, val ) { state->x = val; }
 #define REG( x ) state->regs[x]
 #define REGSET( x, val ) { state->regs[x] = val; }
+#endif
 
+#ifndef MINIRV32_STEPPROTO
 MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count )
+#else
+MINIRV32_STEPPROTO
+#endif
 {
 	uint32_t new_timer = CSR( timerl ) + elapsedUs;
 	if( new_timer < CSR( timerl ) ) CSR( timerh )++;
@@ -143,7 +153,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 		cycle++;
 		uint32_t ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
 
-		if( ofs_pc  >= MINI_RV32_RAM_SIZE )
+		if( ofs_pc >= MINI_RV32_RAM_SIZE )
 		{
 			trap = 1 + 1;  // Handle access violation on instruction read.
 			break;
@@ -160,13 +170,13 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 
 			switch( ir & 0x7f )
 			{
-				case 0b0110111: // LUI
+				case 0x37: // LUI (0b0110111)
 					rval = ( ir & 0xfffff000 );
 					break;
-				case 0b0010111: // AUIPC
+				case 0x17: // AUIPC (0b0010111)
 					rval = pc + ( ir & 0xfffff000 );
 					break;
-				case 0b1101111: // JAL
+				case 0x6F: // JAL (0b1101111)
 				{
 					int32_t reladdy = ((ir & 0x80000000)>>11) | ((ir & 0x7fe00000)>>20) | ((ir & 0x00100000)>>9) | ((ir&0x000ff000));
 					if( reladdy & 0x00100000 ) reladdy |= 0xffe00000; // Sign extension.
@@ -174,7 +184,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					pc = pc + reladdy - 4;
 					break;
 				}
-				case 0b1100111: // JALR
+				case 0x67: // JALR (0b1100111)
 				{
 					uint32_t imm = ir >> 20;
 					int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
@@ -182,7 +192,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					pc = ( (REG( (ir >> 15) & 0x1f ) + imm_se) & ~1) - 4;
 					break;
 				}
-				case 0b1100011: // Branch
+				case 0x63: // Branch (0b1100011)
 				{
 					uint32_t immm4 = ((ir & 0xf00)>>7) | ((ir & 0x7e000000)>>20) | ((ir & 0x80) << 4) | ((ir >> 31)<<12);
 					if( immm4 & 0x1000 ) immm4 |= 0xffffe000;
@@ -193,17 +203,17 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 					switch( ( ir >> 12 ) & 0x7 )
 					{
 						// BEQ, BNE, BLT, BGE, BLTU, BGEU
-						case 0b000: if( rs1 == rs2 ) pc = immm4; break;
-						case 0b001: if( rs1 != rs2 ) pc = immm4; break;
-						case 0b100: if( rs1 < rs2 ) pc = immm4; break;
-						case 0b101: if( rs1 >= rs2 ) pc = immm4; break; //BGE
-						case 0b110: if( (uint32_t)rs1 < (uint32_t)rs2 ) pc = immm4; break;   //BLTU
-						case 0b111: if( (uint32_t)rs1 >= (uint32_t)rs2 ) pc = immm4; break;  //BGEU
+						case 0: if( rs1 == rs2 ) pc = immm4; break;
+						case 1: if( rs1 != rs2 ) pc = immm4; break;
+						case 4: if( rs1 < rs2 ) pc = immm4; break;
+						case 5: if( rs1 >= rs2 ) pc = immm4; break; //BGE
+						case 6: if( (uint32_t)rs1 < (uint32_t)rs2 ) pc = immm4; break;   //BLTU
+						case 7: if( (uint32_t)rs1 >= (uint32_t)rs2 ) pc = immm4; break;  //BGEU
 						default: trap = (2+1);
 					}
 					break;
 				}
-				case 0b0000011: // Load
+				case 0x03: // Load (0b0000011)
 				{
 					uint32_t rs1 = REG((ir >> 15) & 0x1f);
 					uint32_t imm = ir >> 20;
@@ -234,17 +244,17 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						switch( ( ir >> 12 ) & 0x7 )
 						{
 							//LB, LH, LW, LBU, LHU
-							case 0b000: rval = (int8_t)MINIRV32_LOAD1( rsval ); break;
-							case 0b001: rval = (int16_t)MINIRV32_LOAD2( rsval ); break;
-							case 0b010: rval = MINIRV32_LOAD4( rsval ); break;
-							case 0b100: rval = MINIRV32_LOAD1( rsval ); break;
-							case 0b101: rval = MINIRV32_LOAD2( rsval ); break;
+							case 0: rval = MINIRV32_LOAD1_SIGNED( rsval ); break;
+							case 1: rval = MINIRV32_LOAD2_SIGNED( rsval ); break;
+							case 2: rval = MINIRV32_LOAD4( rsval ); break;
+							case 4: rval = MINIRV32_LOAD1( rsval ); break;
+							case 5: rval = MINIRV32_LOAD2( rsval ); break;
 							default: trap = (2+1);
 						}
 					}
 					break;
 				}
-				case 0b0100011: // Store
+				case 0x23: // Store 0b0100011
 				{
 					uint32_t rs1 = REG((ir >> 15) & 0x1f);
 					uint32_t rs2 = REG((ir >> 20) & 0x1f);
@@ -282,60 +292,64 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						switch( ( ir >> 12 ) & 0x7 )
 						{
 							//SB, SH, SW
-							case 0b000: MINIRV32_STORE1( addy, rs2 ); break;
-							case 0b001: MINIRV32_STORE2( addy, rs2 ); break;
-							case 0b010: MINIRV32_STORE4( addy, rs2 ); break;
+							case 0: MINIRV32_STORE1( addy, rs2 ); break;
+							case 1: MINIRV32_STORE2( addy, rs2 ); break;
+							case 2: MINIRV32_STORE4( addy, rs2 ); break;
 							default: trap = (2+1);
 						}
 					}
 					break;
 				}
-				case 0b0010011: // Op-immediate
-				case 0b0110011: // Op
+				case 0x13: // Op-immediate 0b0010011
+				case 0x33: // Op           0b0110011
 				{
 					uint32_t imm = ir >> 20;
 					imm = imm | (( imm & 0x800 )?0xfffff000:0);
 					uint32_t rs1 = REG((ir >> 15) & 0x1f);
-					uint32_t is_reg = !!( ir & 0b100000 );
+					uint32_t is_reg = !!( ir & 0x20 );
 					uint32_t rs2 = is_reg ? REG(imm & 0x1f) : imm;
 
 					if( is_reg && ( ir & 0x02000000 ) )
 					{
 						switch( (ir>>12)&7 ) //0x02000000 = RV32M
 						{
-							case 0b000: rval = rs1 * rs2; break; // MUL
-							case 0b001: rval = ((int64_t)((int32_t)rs1) * (int64_t)((int32_t)rs2)) >> 32; break; // MULH
-							case 0b010: rval = ((int64_t)((int32_t)rs1) * (uint64_t)rs2) >> 32; break; // MULHSU
-							case 0b011: rval = ((uint64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHU
-							case 0b100: if( rs2 == 0 ) rval = -1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? rs1 : ((int32_t)rs1 / (int32_t)rs2); break; // DIV
-							case 0b101: if( rs2 == 0 ) rval = 0xffffffff; else rval = rs1 / rs2; break; // DIVU
-							case 0b110: if( rs2 == 0 ) rval = rs1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? 0 : ((uint32_t)((int32_t)rs1 % (int32_t)rs2)); break; // REM
-							case 0b111: if( rs2 == 0 ) rval = rs1; else rval = rs1 % rs2; break; // REMU
+							case 0: rval = rs1 * rs2; break; // MUL
+#ifndef CUSTOM_MULH // If compiling on a system that doesn't natively, or via libgcc support 64-bit math.
+							case 1: rval = ((int64_t)((int32_t)rs1) * (int64_t)((int32_t)rs2)) >> 32; break; // MULH
+							case 2: rval = ((int64_t)((int32_t)rs1) * (uint64_t)rs2) >> 32; break; // MULHSU
+							case 3: rval = ((uint64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHU
+#else
+							CUSTOM_MULH
+#endif
+							case 4: if( rs2 == 0 ) rval = -1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? rs1 : ((int32_t)rs1 / (int32_t)rs2); break; // DIV
+							case 5: if( rs2 == 0 ) rval = 0xffffffff; else rval = rs1 / rs2; break; // DIVU
+							case 6: if( rs2 == 0 ) rval = rs1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? 0 : ((uint32_t)((int32_t)rs1 % (int32_t)rs2)); break; // REM
+							case 7: if( rs2 == 0 ) rval = rs1; else rval = rs1 % rs2; break; // REMU
 						}
 					}
 					else
 					{
 						switch( (ir>>12)&7 ) // These could be either op-immediate or op commands.  Be careful.
 						{
-							case 0b000: rval = (is_reg && (ir & 0x40000000) ) ? ( rs1 - rs2 ) : ( rs1 + rs2 ); break; 
-							case 0b001: rval = rs1 << (rs2 & 0x1F); break;
-							case 0b010: rval = (int32_t)rs1 < (int32_t)rs2; break;
-							case 0b011: rval = rs1 < rs2; break;
-							case 0b100: rval = rs1 ^ rs2; break;
-							case 0b101: rval = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> (rs2 & 0x1F) ) : ( rs1 >> (rs2 & 0x1F) ); break;
-							case 0b110: rval = rs1 | rs2; break;
-							case 0b111: rval = rs1 & rs2; break;
+							case 0: rval = (is_reg && (ir & 0x40000000) ) ? ( rs1 - rs2 ) : ( rs1 + rs2 ); break; 
+							case 1: rval = rs1 << (rs2 & 0x1F); break;
+							case 2: rval = (int32_t)rs1 < (int32_t)rs2; break;
+							case 3: rval = rs1 < rs2; break;
+							case 4: rval = rs1 ^ rs2; break;
+							case 5: rval = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> (rs2 & 0x1F) ) : ( rs1 >> (rs2 & 0x1F) ); break;
+							case 6: rval = rs1 | rs2; break;
+							case 7: rval = rs1 & rs2; break;
 						}
 					}
 					break;
 				}
-				case 0b0001111:
+				case 0x0f: // 0b0001111
 					rdid = 0;   // fencetype = (ir >> 12) & 0b111; We ignore fences in this impl.
 					break;
-				case 0b1110011: // Zifencei+Zicsr
+				case 0x73: // Zifencei+Zicsr  (0b1110011)
 				{
 					uint32_t csrno = ir >> 20;
-					int microop = ( ir >> 12 ) & 0b111;
+					uint32_t microop = ( ir >> 12 ) & 0x7;
 					if( (microop & 3) ) // It's a Zicsr function.
 					{
 						int rs1imm = (ir >> 15) & 0x1f;
@@ -369,12 +383,12 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 
 						switch( microop )
 						{
-							case 0b001: writeval = rs1; break;  			//CSRRW
-							case 0b010: writeval = rval | rs1; break;		//CSRRS
-							case 0b011: writeval = rval & ~rs1; break;		//CSRRC
-							case 0b101: writeval = rs1imm; break;			//CSRRWI
-							case 0b110: writeval = rval | rs1imm; break;	//CSRRSI
-							case 0b111: writeval = rval & ~rs1imm; break;	//CSRRCI
+							case 1: writeval = rs1; break;  			//CSRRW
+							case 2: writeval = rval | rs1; break;		//CSRRS
+							case 3: writeval = rval & ~rs1; break;		//CSRRC
+							case 5: writeval = rs1imm; break;			//CSRRWI
+							case 6: writeval = rval | rs1imm; break;	//CSRRSI
+							case 7: writeval = rval & ~rs1imm; break;	//CSRRCI
 						}
 
 						switch( csrno )
@@ -399,7 +413,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 							break;
 						}
 					}
-					else if( microop == 0b000 ) // "SYSTEM"
+					else if( microop == 0x0 ) // "SYSTEM" 0b000
 					{
 						rdid = 0;
 						if( csrno == 0x105 ) //WFI (Wait for interrupts)
@@ -434,7 +448,7 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						trap = (2+1); 				// Note micrrop 0b100 == undefined.
 					break;
 				}
-				case 0b0101111: // RV32A
+				case 0x2f: // RV32A (0b00101111)
 				{
 					uint32_t rs1 = REG((ir >> 15) & 0x1f);
 					uint32_t rs2 = REG((ir >> 20) & 0x1f);
@@ -457,23 +471,23 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 						uint32_t dowrite = 1;
 						switch( irmid )
 						{
-							case 0b00010: //LR.W
+							case 2: //LR.W (0b00010)
 								dowrite = 0;
-								CSR( extraflags ) = (CSR( extraflags ) & 0b111) | (rs1<<3);
+								CSR( extraflags ) = (CSR( extraflags ) & 0x07) | (rs1<<3);
 								break;
-							case 0b00011:  //SC.W (Make sure we have a slot, and, it's valid)
+							case 3:  //SC.W (0b00011) (Make sure we have a slot, and, it's valid)
 								rval = ( CSR( extraflags ) >> 3 != ( rs1 & 0x1fffffff ) );  // Validate that our reservation slot is OK.
 								dowrite = !rval; // Only write if slot is valid.
 								break;
-							case 0b00001: break; //AMOSWAP.W
-							case 0b00000: rs2 += rval; break; //AMOADD.W
-							case 0b00100: rs2 ^= rval; break; //AMOXOR.W
-							case 0b01100: rs2 &= rval; break; //AMOAND.W
-							case 0b01000: rs2 |= rval; break; //AMOOR.W
-							case 0b10000: rs2 = ((int32_t)rs2<(int32_t)rval)?rs2:rval; break; //AMOMIN.W
-							case 0b10100: rs2 = ((int32_t)rs2>(int32_t)rval)?rs2:rval; break; //AMOMAX.W
-							case 0b11000: rs2 = (rs2<rval)?rs2:rval; break; //AMOMINU.W
-							case 0b11100: rs2 = (rs2>rval)?rs2:rval; break; //AMOMAXU.W
+							case 1: break; //AMOSWAP.W (0b00001)
+							case 0: rs2 += rval; break; //AMOADD.W (0b00000)
+							case 4: rs2 ^= rval; break; //AMOXOR.W (0b00100)
+							case 12: rs2 &= rval; break; //AMOAND.W (0b01100)
+							case 8: rs2 |= rval; break; //AMOOR.W (0b01000)
+							case 16: rs2 = ((int32_t)rs2<(int32_t)rval)?rs2:rval; break; //AMOMIN.W (0b10000)
+							case 20: rs2 = ((int32_t)rs2>(int32_t)rval)?rs2:rval; break; //AMOMAX.W (0b10100)
+							case 24: rs2 = (rs2<rval)?rs2:rval; break; //AMOMINU.W (0b11000)
+							case 28: rs2 = (rs2>rval)?rs2:rval; break; //AMOMAXU.W (0b11100)
 							default: trap = (2+1); dowrite = 0; break; //Not supported.
 						}
 						if( dowrite ) MINIRV32_STORE4( rs1, rs2 );
