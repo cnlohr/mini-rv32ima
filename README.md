@@ -102,7 +102,7 @@ do
   i=$((i + 1))
 done
 ```
-
+ * And their NoMMU Linux SoC in Verlilog [here](https://github.com/splinedrive/kianRiscV/tree/master/linux_socs/kianv_harris_mcycle_edition?s=09)
 
 ## More details
 
