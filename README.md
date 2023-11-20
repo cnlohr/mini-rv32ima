@@ -92,18 +92,8 @@ Everything else: Contact us on my Discord: https://discord.com/invite/CCeyWyZ
  * @vowstar and their team working on [k210-linux-nommu](https://github.com/vowstar/k210-linux-nommu).
  * This [guide](https://jborza.com/emulation/2020/04/09/riscv-environment.html)
  * [rvcodecjs](https://luplab.gitlab.io/rvcodecjs/) I probably went through over 1,000 codes here.
- * @splinedrive on twitter for finding and giving the following repro for a bug involving atomics.
-```sh
-i=1
-while [ $i -le 10000 ]
-do
-  echo "Running 'ls' in the background, iteration $i"
-  ls >/dev/null 2>&1 &
-  i=$((i + 1))
-done
-```
-
-
+ * @splinedrive from the [KianV RISC-V noMMU SoC](https://github.com/splinedrive/kianRiscV/tree/master/linux_socs/kianv_harris_mcycle_edition?s=09) project.
+ 
 ## More details
 
 If you want to build the kernel yourself:

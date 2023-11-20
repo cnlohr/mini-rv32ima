@@ -12,7 +12,9 @@ launch :
 	../../mini-rv32ima/mini-rv32ima -f ../../buildroot/output/images/Image -m 0x4000000
 
 build : embeddeddoom
-	CC=../../../../buildroot/output/host/usr/bin/riscv32-buildroot-linux-uclibc-gcc CFLAGS="-mabi=ilp32 -fPIE -pie -flto" CFLAGS_FINAL="-mabi=ilp32 -flto -fPIE -pie -static -march=rv32ima -O4 -s -g -DNORMALUNIX -DLINUX $(CFLAGS_EXTRA) -DMAXPLAYERS=1 -DDISABLE_NETWORK -static-libgcc -DSET_MEMORY_DEBUG=0 -DRANGECHECK -fdata-sections -ffunction-sections" LDFLAGS='-Wl,-elf2flt="-r -s 36000" -static -Wl,-Map=../../output.map -Wl,--gc-sections -flto' LIBS="" CS="../../video_console.c ../../extra_assembly.S ../../tmux_colour.c" make -C embeddeddoom/src
+	cp embeddeddoom/src/support/stripchoice-E1M1ONLY.txt embeddeddoom/src/support/stripchoice.txt
+	cp embeddeddoom/src/support/stripchoice-E1M1ONLY.txt embeddeddoom/src/support/stripchoicebegin.txt
+	EXTRA_CFLAGS="-DE1M1ONLY=1" CC=../../../../buildroot/output/host/usr/bin/riscv32-buildroot-linux-uclibc-gcc CFLAGS="-mabi=ilp32 -fPIE -pie -flto -DE1M1ONLY=1" CFLAGS_FINAL="-mabi=ilp32 -flto -fPIE -pie -static -march=rv32ima -O4 -s -g -DNORMALUNIX -DLINUX $(CFLAGS_EXTRA) -DMAXPLAYERS=1 -DDISABLE_NETWORK -static-libgcc -DSET_MEMORY_DEBUG=0 -DRANGECHECK -fdata-sections -ffunction-sections -DE1M1ONLY=1" LDFLAGS='-Wl,-elf2flt="-r -s 36000" -static -Wl,-Map=../../output.map -Wl,--gc-sections -flto' LIBS="" CS="../../video_console.c ../../extra_assembly.S ../../tmux_colour.c" make -C embeddeddoom/src
 	../../buildroot/output/host/usr/bin/riscv32-buildroot-linux-uclibc-size -A embeddeddoom/src/emdoom.gdb
 	../../buildroot/output/host/usr/bin/riscv32-buildroot-linux-uclibc-objdump -S embeddeddoom/src/emdoom.gdb > emdoom_listing.txt
 
