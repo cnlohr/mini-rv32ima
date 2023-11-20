@@ -165,7 +165,7 @@ int icount;
 				}
 				if( len != 4 )
 				{
-					uint lv = LoadMemInternalRB( ptr );
+					uint lv = -( ptr );
 					// XXX TODO
 				}
 				else
