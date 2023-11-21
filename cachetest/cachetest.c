@@ -24,6 +24,7 @@ static int ReadKBByte();
 
 int fail_on_all_faults = 1;
 uint8_t * ram_image = 0;
+uint8_t * ram_image_shadow = 0;
 struct MiniRV32IMAState * core;
 
 #define MINIRV32WARN( x... ) printf( x );
@@ -36,7 +37,7 @@ struct MiniRV32IMAState * core;
 
 typedef uint32_t uint4[4];
 typedef uint32_t uint;
-int icount;
+
 #define MAXICOUNT 1024
 
 #define uint4assign( a, b ) memcpy( a, b, sizeof( uint32_t ) * 4 )
@@ -48,54 +49,69 @@ int icount;
 ///////////////////////////////////////////////////////////////////////////////
 // Section from shader.
 ///////////////////////////////////////////////////////////////////////////////
-			static uint4 cachesetsdata[1024];
-			static uint  cachesetsaddy[1024];
+			#define CACHE_BLOCKS 1024
+			#define CACHE_N_WAY 128
+			static uint4 cachesetsdata[CACHE_BLOCKS];
+			static uint  cachesetsaddy[CACHE_BLOCKS];
 			static uint  storeblockcount;
 			static uint  need_to_flush_runlet;
 
-			// Always aligned-to-4-bytes.
+			// Only use if aligned-to-4-bytes.
 			uint LoadMemInternalRB( uint ptr )
 			{
-				int i;
 				uint blockno = ptr / 16;
-				uint hash = blockno & 0x7f;
+				uint blocknop1 = (ptr >> 4)+1;
+				uint hash = blockno & (CACHE_N_WAY-1);
 				uint4 block;
 				uint ct = 0;
-				for( i = hash; i += 128; i<1024 )
+				uint i;
+				for( i = 0; i < CACHE_BLOCKS; i += CACHE_N_WAY )
 				{
-					ct = cachesetsaddy[i];
-					if( ct == 0 ) break;
-					if( ct == ptr )
+					ct = cachesetsaddy[i+hash];
+					if( ct == 0 )
+					{
+						// else, no block found. Read data.
+						uint4assign( block, MainSystemAccess( blockno ) );
+						break;
+					}
+					if( ct == blocknop1 )
 					{
 						// Found block.
-						uint4assign( block, cachesetsdata[i] );
+						uint4assign( block, cachesetsdata[i+hash] );
+						break;
 					}
 				}
-				if( ct == 0 )
+
+				if( i == CACHE_BLOCKS )
 				{
-					// else, no block found. Read data.
-					uint4assign( block, MainSystemAccess( blockno ) );
+						// Reading after overfilled cache.
+						printf( "WARNING: OVERFILL %d\n", need_to_flush_runlet );
+						uint4assign( block, MainSystemAccess( blockno ) );
 				}
-				return block[(ptr&0xf)>>2];
+				uint ret = block[(ptr&0xf)>>2];
+				//printf( "LOAD  %08x %08x  * %d\n", ptr, ret, i );
+				return ret;
 			}
 
 
-			// todo: review all this.
+			// Store mem internal word (Only use if guaranteed word-alignment)
 			void StoreMemInternalRB( uint ptr, uint val )
 			{
+				//printf( "STORE %08x %08x\n", ptr, val );
 				int i;
-				uint blockno = ptr / 16;
+				uint blockno = ptr >> 4;
+				uint blocknop1 = (ptr >> 4)+1;
 				// ptr will be aligned.
 				// perform a 4-byte store.
-				uint hash = blockno & 0x7f;
+				uint hash = blockno & (CACHE_N_WAY-1);
 				uint4 block;
 				uint ct = 0;
 				// Cache lines are 8-deep, by 16 bytes, with 128 possible cache addresses.
-				for( i = hash; i += 128; i<1024 )
+				for( i = hash; i<CACHE_BLOCKS; i += CACHE_N_WAY )
 				{
 					ct = cachesetsaddy[i];
 					if( ct == 0 ) break;
-					if( ct == ptr )
+					if( ct == blocknop1 )
 					{
 						// Found block.
 						cachesetsdata[i][(ptr&0xf)>>2] = val;
@@ -103,23 +119,31 @@ int icount;
 					}
 				}
 				// NOTE: It should be impossible for i to ever be or exceed 1024.
-				if( i >= (1024-128) )
+				// We catch it early here.
+				if( i >= (CACHE_BLOCKS-CACHE_N_WAY) )
 				{
 					// We have filled a cache line.  We must cleanup without any other stores.
 					need_to_flush_runlet = 1;
+					printf( "OVR Please Flush at %08x\n", ptr );
+					fprintf( stderr, "ERROR: SERIOUS OVERFLOW %d\n", -1 );
+					exit( -99 );
 				}
-				cachesetsaddy[i] = blockno;
+				cachesetsaddy[i] = blocknop1;
 				uint4assign( block, MainSystemAccess( blockno ) );
 				block[(ptr&0xf)>>2] = val;
 				uint4assign( cachesetsdata[i], block );
 				storeblockcount++;
 				// Make sure there's enough room to flush processor state (16 writes)
-				if( storeblockcount >= 112 ) need_to_flush_runlet = 1;
+				if( storeblockcount >= (CACHE_BLOCKS/CACHE_N_WAY) )
+				{
+					need_to_flush_runlet = 1;
+				}
 			}
 
 			// NOTE: len does NOT control upper bits.
 			uint LoadMemInternal( uint ptr, uint len )
 			{
+				uint lenx8mask = ((uint32_t)(-1)) >> (((4-len) & 3) * 8);
 				uint remo = ptr & 3;
 				if( remo )
 				{
@@ -128,49 +152,88 @@ int icount;
 						// Must be split into two reads.
 						uint ret0 = LoadMemInternalRB( ptr & (~3) );
 						uint ret1 = LoadMemInternalRB( (ptr & (~3)) + 4 );
-						return (ret0 >> (remo*8)) | (ret1<<((4-remo)*8)); // XXX TODO:TESTME!!!
+
+						uint ret = lenx8mask & ((ret0 >> (remo*8)) | (ret1<<((4-remo)*8)));
+
+
+						uint check = 0;
+						memcpy( &check, ram_image_shadow + ptr, len );
+						if( check != ret )
+						{
+							fprintf( stderr, "Error check failed x (%08x != %08x) @ %08x\n", check, ret, ptr  );
+							exit( -99 );
+						}
+				
+
+						return ret;
 					}
 					else
 					{
 						// Can just be one.
 						uint ret = LoadMemInternalRB( ptr & (~3) );
-						return ret >> (remo*8);
+						ret = (ret >> (remo*8)) & lenx8mask;
+
+						uint check = 0;
+						memcpy( &check, ram_image_shadow + ptr, len );
+						if( check != ret )
+						{
+							fprintf( stderr, "Error check failed y (%08x != %08x) @ %08x\n", check, ret, ptr  );
+							exit( -99 );
+						}
+
+						return ret;
 					}
 				}
-				return LoadMemInternalRB( ptr );
+				uint ret = LoadMemInternalRB( ptr ) & lenx8mask;
+
+				uint check = 0;
+				memcpy( &check, ram_image_shadow + ptr, len );
+				if( check != ret )
+				{
+					fprintf( stderr, "Error check failed z (%08x != %08x (%d) ) @ %08x\n", check, ret, len, ptr  );
+					exit( -99 );
+				}
+				
+				return LoadMemInternalRB( ptr ) & lenx8mask;
 			}
 			
 			void StoreMemInternal( uint ptr, uint val, uint len )
 			{
-				uint remo = ptr & 3;
-				if( remo )
+				memcpy( ram_image_shadow + ptr, &val, len );
+
+				uint remo = (ptr & 3);
+				uint remo8 = remo * 8;
+				uint ptrtrunc = ptr - remo;
+				uint lenx8mask = ((uint32_t)(-1)) >> (((4-len) & 3) * 8);
+				if( remo + len > 4 )
 				{
-					if( len > 4 - remo )
-					{
-						// Must be split into two writes.
-						uint ret0 = LoadMemInternalRB( ptr & (~3) );
-						uint ret1 = LoadMemInternalRB( (ptr & (~3)) + 4 );
-						uint loaded = (ret0 >> (remo*8)) | (ret1<<((4-remo)*8));
-						uint mask = (1<<(len*8))-1;
-						loaded = (loaded & (~mask)) | ( val & mask );
-						// XXX TODO
-					}
-					else
-					{
-						// Can just be one call.
-						uint ret = LoadMemInternalRB( ptr & (~3) );
-						return ret >> (remo*8);
-						// XXX TODO
-					}
+					// Must be split into two writes.
+					// remo = 2 for instance, 
+					uint val0 = LoadMemInternalRB( ptrtrunc );
+					uint val1 = LoadMemInternalRB( ptrtrunc + 4 );
+					uint mask0 = lenx8mask << (remo8);
+					uint mask1 = lenx8mask >> (32-remo8);
+					val &= lenx8mask;
+					val0 = (val0 & (~mask0)) | ( val << remo8 );
+					val1 = (val1 & (~mask1)) | ( val >> (32-remo8) );
+					StoreMemInternalRB( ptrtrunc, val0 );
+					StoreMemInternalRB( ptrtrunc + 4, val1 );
+					//printf( "RESTORING: %d %d @ %d %d / %08x %08x -> %08x, %08x %08x -> %08x\n", remo, len, ptrtrunc, ptrtrunc+4, mask0, val, val0, mask1, val, val1 );
 				}
-				if( len != 4 )
+				else if( len != 4 )
 				{
-					uint lv = -( ptr );
-					// XXX TODO
+					// Can just be one call.
+					// i.e. the smaller-than-word-size write fits inside the word.
+					uint valr = LoadMemInternalRB( ptrtrunc );
+					uint mask = lenx8mask << remo8;
+					valr = ( valr & (~mask) ) | ( ( val & lenx8mask ) << (remo8) );
+					StoreMemInternalRB( ptrtrunc, valr );
+					//printf( "RESTORING: %d %d @ %d / %08x %08x -> %08x\n", remo, len, ptrtrunc, mask, val, valr );
 				}
 				else
 				{
-					StoreMemInternalRB( ptr, val );
+					// Else it's properly aligned.
+					StoreMemInternalRB( ptrtrunc, val );
 				}
 			}
 
@@ -178,13 +241,13 @@ int icount;
 
 			#define MINIRV32_CUSTOM_MEMORY_BUS
 			uint MINIRV32_LOAD4( uint ofs ) { return LoadMemInternal( ofs, 4 ); }
-			void MINIRV32_STORE4( uint ofs, uint val ) { StoreMemInternal( ofs, val, 4 ); if( need_to_flush_runlet ) icount = MAXICOUNT; }
-			uint MINIRV32_LOAD2( uint ofs ) { uint tword = LoadMemInternal( ofs, 2 ) & 0xffff; return tword; }
-			uint MINIRV32_LOAD1( uint ofs ) { uint tword = LoadMemInternal( ofs, 1 ) & 0xff; return tword; }
-			int MINIRV32_LOAD2_SIGNED( uint ofs ) { uint tword = LoadMemInternal( ofs, 2 ) & 0xffff; if( tword & 0x8000 ) tword |= 0xffff; return tword; }
-			int MINIRV32_LOAD1_SIGNED( uint ofs ) { uint tword = LoadMemInternal( ofs, 1 ) & 0xff;   if( tword & 0x80 ) tword |= 0xff; return tword; }
-			void MINIRV32_STORE2( uint ofs, uint val ) { StoreMemInternal( ofs, val, 2 ); if( need_to_flush_runlet ) icount = MAXICOUNT; }
-			void MINIRV32_STORE1( uint ofs, uint val ) { StoreMemInternal( ofs, val, 1 ); if( need_to_flush_runlet ) icount = MAXICOUNT; }
+			#define MINIRV32_STORE4( ofs, val ) { StoreMemInternal( ofs, val, 4 ); if( need_to_flush_runlet ) icount = MAXICOUNT;}
+			uint MINIRV32_LOAD2( uint ofs ) { uint tword = LoadMemInternal( ofs, 2 ); return tword; }
+			uint MINIRV32_LOAD1( uint ofs ) { uint tword = LoadMemInternal( ofs, 1 ); return tword; }
+			int MINIRV32_LOAD2_SIGNED( uint ofs ) { uint tword = LoadMemInternal( ofs, 2 ); if( tword & 0x8000 ) tword |= 0xffff0000;  return tword; }
+			int MINIRV32_LOAD1_SIGNED( uint ofs ) { uint tword = LoadMemInternal( ofs, 1 ); if( tword & 0x80 )   tword |= 0xffffff00; return tword; }
+			#define MINIRV32_STORE2( ofs, val ) { StoreMemInternal( ofs, val, 2 ); if( need_to_flush_runlet ) icount = MAXICOUNT; }
+			#define MINIRV32_STORE1( ofs, val ) { StoreMemInternal( ofs, val, 1 ); if( need_to_flush_runlet ) icount = MAXICOUNT; }
 
 			// From pi_maker's VRC RVC Linux
 			// https://github.com/PiMaker/rvc/blob/eb6e3447b2b54a07a0f90bb7c33612aeaf90e423/_Nix/rvc/src/emu.h#L255-L276
@@ -216,16 +279,36 @@ int icount;
 				}
 	
 
-
-
 ///////////////////////////////////////////////////////////////////////////////
 // Done section from shader.
 ///////////////////////////////////////////////////////////////////////////////
 
+// This will need to be written by the cache user.
+void FlushRunlet()
+{
+	int k;
+	for( k = 0; k < sizeof( cachesetsaddy ) / sizeof( cachesetsaddy[0] ); k++ )
+	{
+		int a = cachesetsaddy[k];
+		if( a )
+		{
+			int addybase = (a - 1) << 4;
+			int j;
+			for( j = 0; j < 4; j++ )
+			{
+				*((uint32_t*)(&ram_image[addybase])) = cachesetsdata[k][j];
+				addybase +=4;
+			}
+			cachesetsaddy[k] = 0;
+		}
+	}
+	storeblockcount = 0;
+	need_to_flush_runlet = 0;
+}
 
 
 #include "mini-rv32ima.h"
-#include "sixtyfourmb.dtb.h"
+#include "default64mbdtc.h"
 
 #define ram_amt MINI_RV32_RAM_SIZE
 
@@ -240,13 +323,196 @@ int main( int argc, char ** argv )
 	long long instct = -1;
 
 	ram_image = malloc( ram_amt );
+	ram_image_shadow = malloc( ram_amt );
 
-restart:
 	if( !ram_image )
 	{
 		fprintf( stderr, "Error: could not allocate system image.\n" );
 		return -4;
 	}
+
+//#define UNITTEST
+
+#ifdef UNITTEST
+
+	int j;
+	int rseed = 2;
+	int ctct = 0;
+	printf( "Block-aligned-test: Expect collisions, but the collisions should be OK\n" );
+	srand( rseed );
+	memset( ram_image, 0, ram_amt );
+	for( j = 0; j < 300000; j++ )
+	{
+		uint addr = rand() & 2097151;
+		uint val = rand();
+		uint v = LoadMemInternalRB( addr*4 );
+		if( v )
+		{
+			//printf( "Collision Test at %d %d %d\n", addr, v, val );
+			ctct++;
+		}
+		StoreMemInternalRB( addr*4, val );
+		if( need_to_flush_runlet )
+		{
+			FlushRunlet();
+		}
+	}
+	FlushRunlet();
+	srand( rseed );
+	for( j = 0; j < 300000; j++ )
+	{
+		uint addr = rand() & 2097151;
+		uint val = rand();
+		uint32_t r = LoadMemInternalRB( addr*4 );
+		if( r != val )
+		{
+			//printf( "%d disagrees %d @ %d\n", val, r, addr*4 );
+			ctct--;
+		}
+	}
+
+	if( ctct )
+	{
+		fprintf( stderr, "Error: Cache test (def) failed\n" );
+		return -9;
+	}
+	memset( ram_image, 0, ram_amt );
+
+	printf( "Base test OK\n" );
+	srand( rseed );
+	for( j = 0; j < 2000; j++ )
+	{
+		uint addr = rand() & 2097151;
+		uint val = rand();
+		uint v = LoadMemInternal( addr, 4 );
+		if( v )
+		{
+			printf( "Collision Test at %d %d %d\n", addr, v, val );
+			ctct++;
+		}
+		StoreMemInternal( addr, val, 4 );
+		if( need_to_flush_runlet )
+		{
+			FlushRunlet();
+		}
+	}
+	FlushRunlet();
+	srand( rseed );
+	for( j = 0; j < 2000; j++ )
+	{
+		uint addr = rand() & 2097151;
+		uint val = rand();
+		uint32_t r = LoadMemInternal( addr, 4 );
+		if( r != val )
+		{
+			printf( "val %08x disagrees %08x @ %08x\n", val, r, addr );
+			ctct--;
+		}
+	}
+	if( ctct )
+	{
+		fprintf( stderr, "Error: Cache test (4) failed (%d)\n", ctct );
+		return -9;
+	}
+	printf( "4 test OK\n" );
+	memset( ram_image, 0, ram_amt );
+
+
+	srand( rseed );
+	for( j = 0; j < 20000; j++ )
+	{
+		uint addr = rand() & 2097151;
+		uint val = rand();
+		uint v = LoadMemInternal( addr, 4 );
+		StoreMemInternal( addr, val, 4 );
+		if( need_to_flush_runlet )
+		{
+			FlushRunlet();
+		}
+		uint v2 = LoadMemInternal( addr, 4 );
+		if( val != v2 )
+		{
+			printf( "TEST FAILED Test at %08x (%08x != %08x) %08x\n", addr, v, v2, val );
+			return -10;
+		}
+	}
+	printf( "Cache test (4 B) OK\n" );
+	memset( ram_image, 0, ram_amt );
+
+	srand( rseed );
+	for( j = 0; j < 3000; j++ )
+	{
+		uint addr = rand() & 2097151;
+		uint val = rand();
+		uint len = (rand() & 3)+1;
+		val &= ((uint32_t)(-1))>>(32-len*8);
+		uint v = LoadMemInternal( addr, len );
+		if( v )
+		{
+			//printf( "Collision Test at %d %d %d\n", addr, v, val );
+			ctct++;
+		}
+		StoreMemInternal( addr, val, len );
+		if( need_to_flush_runlet )
+		{
+			FlushRunlet();
+		}
+	}
+	FlushRunlet();
+	srand( rseed );
+	for( j = 0; j < 3000; j++ )
+	{
+		uint addr = rand() & 2097151;
+		uint val = rand();
+		uint len = (rand() & 3)+1;
+		val &= (((uint32_t)-1)>>(32-len*8));
+
+		uint32_t r = LoadMemInternal( addr, len );
+		if( r != val )
+		{
+			//printf( "%d disagrees %d @ %d\n", val, r, addr );
+			ctct--;
+		}
+	}
+
+	if( ctct )
+	{
+		fprintf( stderr, "Error: Cache test (r) failed\n" );
+		return -9;
+	}
+	memset( ram_image, 0, ram_amt );
+	printf( "Cache Test (R) OK\n" );
+
+
+	srand( rseed );
+	for( j = 0; j < 200000; j++ )
+	{
+		uint addr = rand() & 2097151;
+		uint val = rand();
+		uint len = (rand() & 3)+1;
+		val &= (((uint32_t)-1)>>(32-len*8));
+		uint v = LoadMemInternal( addr, len );
+		StoreMemInternal( addr, val, len );
+		if( need_to_flush_runlet )
+		{
+			FlushRunlet();
+		}
+		uint v2 = LoadMemInternal( addr, 4 );
+		v2 &= (((uint32_t)-1)>>(32-len*8));
+		if( val != v2 )
+		{
+			printf( "TEST FAILED Test at %08x (%08x != %08x) %08x\n", addr, v2, val, v );
+			return -10;
+		}
+	}
+	printf( "Cache test (R B) OK\n" );
+	memset( ram_image, 0, ram_amt );
+
+
+	exit(0  );
+#endif
+
+restart:
 
 	{
 		const char * image_file_name = argv[1];
@@ -278,6 +544,19 @@ restart:
 	memcpy( ram_image + dtb_ptr, default64mbdtb, sizeof( default64mbdtb ) );
 
 
+	// Update system ram size in DTB (but if and only if we're using the default DTB)
+	// Warning - this will need to be updated if the skeleton DTB is ever modified.
+	uint32_t * dtb = (uint32_t*)(ram_image + dtb_ptr);
+	if( dtb[0x13c/4] == 0x00c0ff03 )
+	{
+		uint32_t validram = dtb_ptr;
+		dtb[0x13c/4] = (validram>>24) | ((( validram >> 16 ) & 0xff) << 8 ) | (((validram>>8) & 0xff ) << 16 ) | ( ( validram & 0xff) << 24 );
+	}
+
+
+
+	memcpy( ram_image_shadow, ram_image, ram_amt );
+
 	CaptureKeyboardInput();
 
 	// The core lives at the end of RAM.
@@ -304,6 +583,7 @@ restart:
 		//	DumpState( core, ram_image);
 
 		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs, instrs_per_flip ); // Execute upto 1024 cycles before breaking out.
+		if( need_to_flush_runlet ) FlushRunlet();
 		switch( ret )
 		{
 			case 0: break;
