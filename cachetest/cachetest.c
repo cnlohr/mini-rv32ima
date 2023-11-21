@@ -49,6 +49,7 @@ typedef uint32_t uint;
 ///////////////////////////////////////////////////////////////////////////////
 // Section from shader.
 ///////////////////////////////////////////////////////////////////////////////
+
 			#define CACHE_BLOCKS 1024
 			#define CACHE_N_WAY 128
 			static uint4 cachesetsdata[CACHE_BLOCKS];
@@ -68,16 +69,16 @@ typedef uint32_t uint;
 				for( i = 0; i < CACHE_BLOCKS; i += CACHE_N_WAY )
 				{
 					ct = cachesetsaddy[i+hash];
-					if( ct == 0 )
-					{
-						// else, no block found. Read data.
-						uint4assign( block, MainSystemAccess( blockno ) );
-						break;
-					}
 					if( ct == blocknop1 )
 					{
 						// Found block.
 						uint4assign( block, cachesetsdata[i+hash] );
+						break;
+					}
+					else if( ct == 0 )
+					{
+						// else, no block found. Read data.
+						uint4assign( block, MainSystemAccess( blockno ) );
 						break;
 					}
 				}
@@ -85,7 +86,8 @@ typedef uint32_t uint;
 				if( i == CACHE_BLOCKS )
 				{
 						// Reading after overfilled cache.
-						printf( "WARNING: OVERFILL %d\n", need_to_flush_runlet );
+						// Need to panic here.
+						// This should never ever happen.
 						uint4assign( block, MainSystemAccess( blockno ) );
 				}
 				uint ret = block[(ptr&0xf)>>2];
