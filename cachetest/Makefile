@@ -1,7 +1,7 @@
 all : cachetest
 
 cachetest : cachetest.c
-	gcc -o $@ $^ -Os -I../mini-rv32ima
+	gcc -o $@ $^ -Og -g -I../mini-rv32ima -Wall
 
 clean :
 	rm -rf *.o cachetest
