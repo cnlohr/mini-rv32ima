@@ -13,7 +13,6 @@
 static uint64_t GetTimeMicroseconds();
 static void ResetKeyboardInput();
 static void CaptureKeyboardInput();
-static uint32_t HandleException( uint32_t ir, uint32_t retval );
 static uint32_t HandleControlStore( uint32_t addy, uint32_t val );
 static uint32_t HandleControlLoad( uint32_t addy );
 static void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t value );
@@ -46,53 +45,73 @@ typedef uint32_t uint;
 #define AS_SIGNED(val) ((int32_t)(val))
 #define AS_UNSIGNED(val) ((uint32_t)(val))
 
+// Results, Booting Image.ProfileTest
+//                                             vvv this is # of times memory was filled.
+// 1024 / 4  > POWEROFF@0x00000000643a3945 // 11877 / 1654514
+//  384 / 3  > POWEROFF@0x0000000064268147 // 33481 / 1664185
+// 3072 / 3  > POWEROFF@0x00000000643fca65 // 2766 / 1649972
+// 1024 / 8  > POWEROFF@0x00000000644d3efd // 3525 / 1651561         
+// 1029 / 7  > POWEROFF@0x00000000644a3453 // 3511 / 1651337
+// 1023 / 3  > POWEROFF@0x000000006442b3c1 // 18722 / 1660258
+//  635 / 5  > POWEROFF@0x00000000643ed80f // 7016 / 1652821
+// Adding a max fcnt (Equivelent to # of points able to be output from shader.
+//  768 /  635 / 3 /  POWEROFF@0x00000000644affab // 24579 / 1662754
+//  768 / 1022 / 2 /  POWEROFF@0x00000000642d0e4b // 78297 / 1690837
+//  768 / 969  / 3 /  POWEROFF@0x00000000643ad1ce // 8486 / 1651512
+//  768 / 969  / 1 /  POWEROFF@0x0000000020d77858 // 45056097 / 45087974  <<< This is not a valid check, please ignore it.
+//  768 / 966  / 2 /  POWEROFF@0x00000000643fbd2d // 49606 / 1681855
+//  512 / 966  / 2 /  POWEROFF@0x00000000643d1311 // 62878 / 1690250  << Why is this any different?
+//  512 / 512  / 2 /  POWEROFF@0x000000006442f1c8 // 69580 / 1690151  << Interesting. 
+
 ///////////////////////////////////////////////////////////////////////////////
 // Section from shader.
 ///////////////////////////////////////////////////////////////////////////////
 
-			#define CACHE_BLOCKS 1024
-			#define CACHE_N_WAY 128
+			#define MAX_FCNT     512
+			#define CACHE_BLOCKS 512
+			#define CACHE_N_WAY  2
+
 			static uint4 cachesetsdata[CACHE_BLOCKS];
 			static uint  cachesetsaddy[CACHE_BLOCKS];
-			static uint  storeblockcount;
-			static uint  need_to_flush_runlet;
+			static uint  cache_usage;
 
 			// Only use if aligned-to-4-bytes.
 			uint LoadMemInternalRB( uint ptr )
 			{
 				uint blockno = ptr / 16;
 				uint blocknop1 = (ptr >> 4)+1;
-				uint hash = blockno & (CACHE_N_WAY-1);
+				uint hash = (blockno % (CACHE_BLOCKS/CACHE_N_WAY)) * CACHE_N_WAY;
 				uint4 block;
 				uint ct = 0;
 				uint i;
-				for( i = 0; i < CACHE_BLOCKS; i += CACHE_N_WAY )
+				for( i = 0; i < CACHE_N_WAY; i++ )
 				{
 					ct = cachesetsaddy[i+hash];
 					if( ct == blocknop1 )
 					{
 						// Found block.
 						uint4assign( block, cachesetsdata[i+hash] );
-						break;
+						return block[(ptr&0xf)>>2];
 					}
 					else if( ct == 0 )
 					{
 						// else, no block found. Read data.
 						uint4assign( block, MainSystemAccess( blockno ) );
-						break;
+						return block[(ptr&0xf)>>2];
 					}
 				}
 
-				if( i == CACHE_BLOCKS )
+				if( i == CACHE_N_WAY )
 				{
 						// Reading after overfilled cache.
 						// Need to panic here.
 						// This should never ever happen.
 						uint4assign( block, MainSystemAccess( blockno ) );
+						return block[(ptr&0xf)>>2];
 				}
-				uint ret = block[(ptr&0xf)>>2];
-				//printf( "LOAD  %08x %08x  * %d\n", ptr, ret, i );
-				return ret;
+
+				// Not arrivable.
+				return 0;
 			}
 
 
@@ -100,45 +119,45 @@ typedef uint32_t uint;
 			void StoreMemInternalRB( uint ptr, uint val )
 			{
 				//printf( "STORE %08x %08x\n", ptr, val );
-				int i;
 				uint blockno = ptr >> 4;
 				uint blocknop1 = (ptr >> 4)+1;
 				// ptr will be aligned.
 				// perform a 4-byte store.
-				uint hash = blockno & (CACHE_N_WAY-1);
+				uint hash = (blockno % (CACHE_BLOCKS/CACHE_N_WAY)) * CACHE_N_WAY;
+				uint hashend = hash + CACHE_N_WAY;
 				uint4 block;
 				uint ct = 0;
 				// Cache lines are 8-deep, by 16 bytes, with 128 possible cache addresses.
-				for( i = hash; i<CACHE_BLOCKS; i += CACHE_N_WAY )
+				for( ; hash < hashend; hash++ )
 				{
-					ct = cachesetsaddy[i];
+					ct = cachesetsaddy[hash];
 					if( ct == 0 ) break;
 					if( ct == blocknop1 )
 					{
 						// Found block.
-						cachesetsdata[i][(ptr&0xf)>>2] = val;
+						cachesetsdata[hash][(ptr&0xf)>>2] = val;
 						return;
 					}
 				}
 				// NOTE: It should be impossible for i to ever be or exceed 1024.
 				// We catch it early here.
-				if( i >= (CACHE_BLOCKS-CACHE_N_WAY) )
+				if( hash == hashend )
 				{
 					// We have filled a cache line.  We must cleanup without any other stores.
-					need_to_flush_runlet = 1;
+					cache_usage = MAX_FCNT;
 					printf( "OVR Please Flush at %08x\n", ptr );
 					fprintf( stderr, "ERROR: SERIOUS OVERFLOW %d\n", -1 );
 					exit( -99 );
 				}
-				cachesetsaddy[i] = blocknop1;
+				cachesetsaddy[hash] = blocknop1;
 				uint4assign( block, MainSystemAccess( blockno ) );
 				block[(ptr&0xf)>>2] = val;
-				uint4assign( cachesetsdata[i], block );
-				storeblockcount++;
+				uint4assign( cachesetsdata[hash], block );
 				// Make sure there's enough room to flush processor state (16 writes)
-				if( storeblockcount >= (CACHE_BLOCKS/CACHE_N_WAY) )
+				cache_usage++;
+				if( hash == hashend-1 )
 				{
-					need_to_flush_runlet = 1;
+					cache_usage = MAX_FCNT;
 				}
 			}
 
@@ -243,13 +262,13 @@ typedef uint32_t uint;
 
 			#define MINIRV32_CUSTOM_MEMORY_BUS
 			uint MINIRV32_LOAD4( uint ofs ) { return LoadMemInternal( ofs, 4 ); }
-			#define MINIRV32_STORE4( ofs, val ) { StoreMemInternal( ofs, val, 4 ); if( need_to_flush_runlet ) icount = MAXICOUNT;}
+			#define MINIRV32_STORE4( ofs, val ) { StoreMemInternal( ofs, val, 4 ); if( cache_usage >= MAX_FCNT ) icount = MAXICOUNT;}
 			uint MINIRV32_LOAD2( uint ofs ) { uint tword = LoadMemInternal( ofs, 2 ); return tword; }
 			uint MINIRV32_LOAD1( uint ofs ) { uint tword = LoadMemInternal( ofs, 1 ); return tword; }
 			int MINIRV32_LOAD2_SIGNED( uint ofs ) { uint tword = LoadMemInternal( ofs, 2 ); if( tword & 0x8000 ) tword |= 0xffff0000;  return tword; }
 			int MINIRV32_LOAD1_SIGNED( uint ofs ) { uint tword = LoadMemInternal( ofs, 1 ); if( tword & 0x80 )   tword |= 0xffffff00; return tword; }
-			#define MINIRV32_STORE2( ofs, val ) { StoreMemInternal( ofs, val, 2 ); if( need_to_flush_runlet ) icount = MAXICOUNT; }
-			#define MINIRV32_STORE1( ofs, val ) { StoreMemInternal( ofs, val, 1 ); if( need_to_flush_runlet ) icount = MAXICOUNT; }
+			#define MINIRV32_STORE2( ofs, val ) { StoreMemInternal( ofs, val, 2 ); if( cache_usage >= MAX_FCNT ) icount = MAXICOUNT; }
+			#define MINIRV32_STORE1( ofs, val ) { StoreMemInternal( ofs, val, 1 ); if( cache_usage >= MAX_FCNT ) icount = MAXICOUNT; }
 
 			// From pi_maker's VRC RVC Linux
 			// https://github.com/PiMaker/rvc/blob/eb6e3447b2b54a07a0f90bb7c33612aeaf90e423/_Nix/rvc/src/emu.h#L255-L276
@@ -289,6 +308,10 @@ typedef uint32_t uint;
 void FlushRunlet()
 {
 	int k;
+
+	int cachefillecout = 0;
+	int do_debug_flash_flush = 0;
+	if( do_debug_flash_flush ) printf( "[" );
 	for( k = 0; k < sizeof( cachesetsaddy ) / sizeof( cachesetsaddy[0] ); k++ )
 	{
 		int a = cachesetsaddy[k];
@@ -302,10 +325,17 @@ void FlushRunlet()
 				addybase +=4;
 			}
 			cachesetsaddy[k] = 0;
+			cachefillecout++;
+		}
+
+		if( k % (CACHE_N_WAY) == (CACHE_N_WAY) - 1) 
+		{
+			if( do_debug_flash_flush ) printf( "%d", cachefillecout ); 
+			cachefillecout = 0;
 		}
 	}
-	storeblockcount = 0;
-	need_to_flush_runlet = 0;
+	if( do_debug_flash_flush ) printf( "]\n" );
+	cache_usage = 0;
 }
 
 
@@ -354,7 +384,7 @@ int main( int argc, char ** argv )
 			ctct++;
 		}
 		StoreMemInternalRB( addr*4, val );
-		if( need_to_flush_runlet )
+		if( cache_usage >= MAX_FCNT )
 		{
 			FlushRunlet();
 		}
@@ -393,7 +423,7 @@ int main( int argc, char ** argv )
 			ctct++;
 		}
 		StoreMemInternal( addr, val, 4 );
-		if( need_to_flush_runlet )
+		if( cache_usage >= MAX_FCNT )
 		{
 			FlushRunlet();
 		}
@@ -427,7 +457,7 @@ int main( int argc, char ** argv )
 		uint val = rand();
 		uint v = LoadMemInternal( addr, 4 );
 		StoreMemInternal( addr, val, 4 );
-		if( need_to_flush_runlet )
+		if( cache_usage >= MAX_FCNT)
 		{
 			FlushRunlet();
 		}
@@ -455,7 +485,7 @@ int main( int argc, char ** argv )
 			ctct++;
 		}
 		StoreMemInternal( addr, val, len );
-		if( need_to_flush_runlet )
+		if( cache_usage >= MAX_FCNT )
 		{
 			FlushRunlet();
 		}
@@ -495,7 +525,7 @@ int main( int argc, char ** argv )
 		val &= (((uint32_t)-1)>>(32-len*8));
 		uint v = LoadMemInternal( addr, len );
 		StoreMemInternal( addr, val, len );
-		if( need_to_flush_runlet )
+		if( cache_usage  >= MAX_FCNT)
 		{
 			FlushRunlet();
 		}
@@ -571,6 +601,8 @@ restart:
 	uint64_t rt;
 	uint64_t lastTime = (fixed_update)?0:(GetTimeMicroseconds()/time_divisor);
 	int instrs_per_flip = MAXICOUNT;
+	int total_exits = 0;
+	int cache_exits = 0;
 	for( rt = 0; rt < instct+1 || instct < 0; rt += instrs_per_flip )
 	{
 		uint64_t * this_ccount = ((uint64_t*)&core->cyclel);
@@ -585,14 +617,20 @@ restart:
 		//	DumpState( core, ram_image);
 
 		int ret = MiniRV32IMAStep( core, ram_image, 0, elapsedUs, instrs_per_flip ); // Execute upto 1024 cycles before breaking out.
-		if( need_to_flush_runlet ) FlushRunlet();
+		if( cache_usage  >= MAX_FCNT)
+		{
+			FlushRunlet();
+			cache_exits++;
+		}
+		total_exits++;
+
 		switch( ret )
 		{
 			case 0: break;
 			case 1: if( do_sleep ) MiniSleep(); *this_ccount += instrs_per_flip; break;
 			case 3: instct = 0; break;
 			case 0x7777: goto restart;	//syscon code for restart
-			case 0x5555: printf( "POWEROFF@0x%08x%08x\n", core->cycleh, core->cyclel ); return 0; //syscon code for power-off
+			case 0x5555: printf( "POWEROFF@0x%08x%08x // %d / %d\n", core->cycleh, core->cyclel, cache_exits, total_exits ); return 0; //syscon code for power-off
 			default: printf( "Unknown failure\n" ); break;
 		}
 	}
@@ -757,15 +795,6 @@ static int IsKBHit()
 // Rest of functions functionality
 //////////////////////////////////////////////////////////////////////////
 
-static uint32_t HandleException( uint32_t ir, uint32_t code )
-{
-	// Weird opcode emitted by duktape on exit.
-	if( code == 3 )
-	{
-		// Could handle other opcodes here.
-	}
-	return code;
-}
 
 static uint32_t HandleControlStore( uint32_t addy, uint32_t val )
 {
