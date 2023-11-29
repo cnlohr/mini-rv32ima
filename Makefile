@@ -14,7 +14,7 @@ toolchain : buildroot
 
 everything : toolchain
 	make -C hello_linux deploy
-	make -C packages/duktapetest deploy
+	# make -C packages/duktapetest deploy
 	make -C packages/coremark deploy
 	cp -a configs/rootfsoverlay/* buildroot/output/target/
 	make -C buildroot
