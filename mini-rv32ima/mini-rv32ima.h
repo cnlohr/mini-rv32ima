@@ -193,7 +193,27 @@ cont_inst:
 	};
 
 	goto *jumptable[ir & 0x7f];
+	{
 
+/*
+// Uncomment to try using a switch instead of a jumptable.
+#define C0x37 case 0x37
+#define C0x17 case 0x17
+#define C0x6F case 0x6F
+#define C0x67 case 0x67
+#define C0x63 case 0x63
+#define C0x03 case 0x03
+#define C0x23 case 0x23
+#define C0x13 case 0x13
+#define C0x33 case 0x33
+#define C0x0f case 0x0f
+#define C0x73 case 0x73
+#define C0x2f case 0x2f
+
+	switch( ir & 0x7f )
+	{
+	default: goto Cfail;
+*/
 
 	C0x37: // LUI (0b0110111)
 		rval = ( ir & 0xfffff000 );
@@ -537,7 +557,7 @@ cont_inst:
 		}
 		goto rvalwrite;
 	}
-
+	}
 
 
 
