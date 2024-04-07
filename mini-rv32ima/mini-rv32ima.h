@@ -134,6 +134,7 @@ MINIRV32_STEPPROTO
 	if( CSR( extraflags ) & 4 )
 		return 1;
 
+	uint32_t ir = 0;
 	uint32_t trap = 0;
 	uint32_t rval = 0;
 	uint32_t pc = CSR( pc );
@@ -144,11 +145,11 @@ MINIRV32_STEPPROTO
 		// Timer interrupt.
 		trap = 0x80000007;
 		pc -= 4;
+		goto calltrap;
 	}
-	else // No timer interrupt?  Execute a bunch of instructions.
+
 	for( int icount = 0; icount < count; icount++ )
 	{
-		uint32_t ir = 0;
 		rval = 0;
 		cycle++;
 		uint32_t ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
@@ -156,51 +157,67 @@ MINIRV32_STEPPROTO
 		if( ofs_pc >= MINI_RV32_RAM_SIZE )
 		{
 			trap = 1 + 1;  // Handle access violation on instruction read.
-			break;
+			goto calltrap;
 		}
-		else if( ofs_pc & 3 )
-		{
-			trap = 1 + 0;  //Handle PC-misaligned access
-			break;
-		}
-		else
+
+		//if( ofs_pc & 3 )
+		//{
+		//	trap = 1 + 0;  //Handle PC-misaligned access
+		//	goto calltrap;
+		//}
+
 		{
 			ir = MINIRV32_LOAD4( ofs_pc );
 			uint32_t rdid = (ir >> 7) & 0x1f;
 
-			switch( ir & 0x7f )
-			{
-				case 0x37: // LUI (0b0110111)
+			static const void * jumptable[] = {
+				&&Cfail, &&Cfail, &&Cfail, &&C0x03, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x0f,
+				&&Cfail, &&Cfail, &&Cfail, &&C0x13, &&Cfail, &&Cfail, &&Cfail, &&C0x17, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+				&&Cfail, &&Cfail, &&Cfail, &&C0x23, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x2f,
+				&&Cfail, &&Cfail, &&Cfail, &&C0x33, &&Cfail, &&Cfail, &&Cfail, &&C0x37, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+				&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+				&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+				&&Cfail, &&Cfail, &&Cfail, &&C0x63, &&Cfail, &&Cfail, &&Cfail, &&C0x67, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x6F,
+				&&Cfail, &&Cfail, &&Cfail, &&C0x73, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+			};
+
+			goto *jumptable[ir & 0x7f];
+
+			//switch( ir & 0x7f )
+			//{
+				C0x37: // LUI (0b0110111)
 					rval = ( ir & 0xfffff000 );
-					break;
-				case 0x17: // AUIPC (0b0010111)
+					goto rvalwrite;
+				C0x17: // AUIPC (0b0010111)
 					rval = pc + ( ir & 0xfffff000 );
-					break;
-				case 0x6F: // JAL (0b1101111)
+					goto rvalwrite;
+				C0x6F: // JAL (0b1101111)
 				{
 					int32_t reladdy = ((ir & 0x80000000)>>11) | ((ir & 0x7fe00000)>>20) | ((ir & 0x00100000)>>9) | ((ir&0x000ff000));
 					if( reladdy & 0x00100000 ) reladdy |= 0xffe00000; // Sign extension.
 					rval = pc + 4;
 					pc = pc + reladdy - 4;
-					break;
+					goto rvalwrite;
 				}
-				case 0x67: // JALR (0b1100111)
+				C0x67: // JALR (0b1100111)
 				{
 					uint32_t imm = ir >> 20;
 					int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
 					rval = pc + 4;
 					pc = ( (REG( (ir >> 15) & 0x1f ) + imm_se) & ~1) - 4;
-					break;
+					goto rvalwrite;
 				}
-				case 0x63: // Branch (0b1100011)
+				C0x63: // Branch (0b1100011)
 				{
 					uint32_t immm4 = ((ir & 0xf00)>>7) | ((ir & 0x7e000000)>>20) | ((ir & 0x80) << 4) | ((ir >> 31)<<12);
 					if( immm4 & 0x1000 ) immm4 |= 0xffffe000;
 					int32_t rs1 = REG((ir >> 15) & 0x1f);
 					int32_t rs2 = REG((ir >> 20) & 0x1f);
+					uint32_t subop = (ir>>12)&7;
 					immm4 = pc + immm4 - 4;
 					rdid = 0;
-					switch( ( ir >> 12 ) & 0x7 )
+
+					switch( subop )
 					{
 						// BEQ, BNE, BLT, BGE, BLTU, BGEU
 						case 0: if( rs1 == rs2 ) pc = immm4; break;
@@ -209,11 +226,11 @@ MINIRV32_STEPPROTO
 						case 5: if( rs1 >= rs2 ) pc = immm4; break; //BGE
 						case 6: if( (uint32_t)rs1 < (uint32_t)rs2 ) pc = immm4; break;   //BLTU
 						case 7: if( (uint32_t)rs1 >= (uint32_t)rs2 ) pc = immm4; break;  //BGEU
-						default: trap = (2+1);
+						default: trap = (2+1); goto calltrap;
 					}
-					break;
+					goto norvalwrite;
 				}
-				case 0x03: // Load (0b0000011)
+				C0x03: // Load (0b0000011)
 				{
 					uint32_t rs1 = REG((ir >> 15) & 0x1f);
 					uint32_t imm = ir >> 20;
@@ -237,11 +254,13 @@ MINIRV32_STEPPROTO
 						{
 							trap = (5+1);
 							rval = rsval;
+							goto calltrap;
 						}
 					}
 					else
 					{
-						switch( ( ir >> 12 ) & 0x7 )
+						uint32_t subop = (ir>>12)&7;
+						switch( subop )
 						{
 							//LB, LH, LW, LBU, LHU
 							case 0: rval = MINIRV32_LOAD1_SIGNED( rsval ); break;
@@ -249,16 +268,16 @@ MINIRV32_STEPPROTO
 							case 2: rval = MINIRV32_LOAD4( rsval ); break;
 							case 4: rval = MINIRV32_LOAD1( rsval ); break;
 							case 5: rval = MINIRV32_LOAD2( rsval ); break;
-							default: trap = (2+1);
+							default: trap = (2+1); goto calltrap;
 						}
 					}
-					break;
+					goto rvalwrite;
 				}
-				case 0x23: // Store 0b0100011
+				C0x23: // Store 0b0100011
 				{
 					uint32_t rs1 = REG((ir >> 15) & 0x1f);
 					uint32_t rs2 = REG((ir >> 20) & 0x1f);
-					uint32_t addy = ( ( ir >> 7 ) & 0x1f ) | ( ( ir & 0xfe000000 ) >> 20 );
+					uint32_t addy = ( rdid ) | ( ( ir & 0xfe000000 ) >> 20 );
 					if( addy & 0x800 ) addy |= 0xfffff000;
 					addy += rs1 - MINIRV32_RAM_IMAGE_OFFSET;
 					rdid = 0;
@@ -283,74 +302,84 @@ MINIRV32_STEPPROTO
 						}
 						else
 						{
-							trap = (7+1); // Store access fault.
+							trap = (7+1); goto calltrap; // Store access fault.
 							rval = addy;
 						}
 					}
 					else
 					{
-						switch( ( ir >> 12 ) & 0x7 )
+						uint32_t subop = (ir>>12)&7;
+						switch( subop )
 						{
 							//SB, SH, SW
 							case 0: MINIRV32_STORE1( addy, rs2 ); break;
 							case 1: MINIRV32_STORE2( addy, rs2 ); break;
 							case 2: MINIRV32_STORE4( addy, rs2 ); break;
-							default: trap = (2+1);
+							default: trap = (2+1); goto calltrap;
 						}
 					}
-					break;
+					goto norvalwrite;
 				}
-				case 0x13: // Op-immediate 0b0010011
-				case 0x33: // Op           0b0110011
+				C0x13: // Op-immediate 0b0010011
+				C0x33: // Op           0b0110011
 				{
 					uint32_t imm = ir >> 20;
 					imm = imm | (( imm & 0x800 )?0xfffff000:0);
 					uint32_t rs1 = REG((ir >> 15) & 0x1f);
 					uint32_t is_reg = !!( ir & 0x20 );
 					uint32_t rs2 = is_reg ? REG(imm & 0x1f) : imm;
+					uint32_t subop = (ir>>12)&7;
 
 					if( is_reg && ( ir & 0x02000000 ) )
 					{
-						switch( (ir>>12)&7 ) //0x02000000 = RV32M
-						{
-							case 0: rval = rs1 * rs2; break; // MUL
+					static const void * suboptable[] = {
+						&&SO10, &&SO11, &&SO12, &&SO13, &&SO14, &&SO15, &&SO16, &&SO17, };
+
+					goto *suboptable[ subop ];
+
+					//	switch( (ir>>12)&7 ) //0x02000000 = RV32M
+					//	{
+							SO10: rval = rs1 * rs2; goto rvalwrite; // MUL
 #ifndef CUSTOM_MULH // If compiling on a system that doesn't natively, or via libgcc support 64-bit math.
-							case 1: rval = ((int64_t)((int32_t)rs1) * (int64_t)((int32_t)rs2)) >> 32; break; // MULH
-							case 2: rval = ((int64_t)((int32_t)rs1) * (uint64_t)rs2) >> 32; break; // MULHSU
-							case 3: rval = ((uint64_t)rs1 * (uint64_t)rs2) >> 32; break; // MULHU
+							SO11: rval = ((int64_t)((int32_t)rs1) * (int64_t)((int32_t)rs2)) >> 32; goto rvalwrite; // MULH
+							SO12: rval = ((int64_t)((int32_t)rs1) * (uint64_t)rs2) >> 32; goto rvalwrite; // MULHSU
+							SO13: rval = ((uint64_t)rs1 * (uint64_t)rs2) >> 32; goto rvalwrite; // MULHU
 #else
 							CUSTOM_MULH
 #endif
-							case 4: if( rs2 == 0 ) rval = -1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? rs1 : ((int32_t)rs1 / (int32_t)rs2); break; // DIV
-							case 5: if( rs2 == 0 ) rval = 0xffffffff; else rval = rs1 / rs2; break; // DIVU
-							case 6: if( rs2 == 0 ) rval = rs1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? 0 : ((uint32_t)((int32_t)rs1 % (int32_t)rs2)); break; // REM
-							case 7: if( rs2 == 0 ) rval = rs1; else rval = rs1 % rs2; break; // REMU
-						}
+							SO14: if( rs2 == 0 ) rval = -1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? rs1 : ((int32_t)rs1 / (int32_t)rs2); goto rvalwrite; // DIV
+							SO15: if( rs2 == 0 ) rval = 0xffffffff; else rval = rs1 / rs2; goto rvalwrite; // DIVU
+							SO16: if( rs2 == 0 ) rval = rs1; else rval = ((int32_t)rs1 == INT32_MIN && (int32_t)rs2 == -1) ? 0 : ((uint32_t)((int32_t)rs1 % (int32_t)rs2)); goto rvalwrite; // REM
+							SO17: if( rs2 == 0 ) rval = rs1; else rval = rs1 % rs2; goto rvalwrite; // REMU
+					//	}
 					}
 					else
 					{
-						switch( (ir>>12)&7 ) // These could be either op-immediate or op commands.  Be careful.
-						{
-							case 0: rval = (is_reg && (ir & 0x40000000) ) ? ( rs1 - rs2 ) : ( rs1 + rs2 ); break; 
-							case 1: rval = rs1 << (rs2 & 0x1F); break;
-							case 2: rval = (int32_t)rs1 < (int32_t)rs2; break;
-							case 3: rval = rs1 < rs2; break;
-							case 4: rval = rs1 ^ rs2; break;
-							case 5: rval = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> (rs2 & 0x1F) ) : ( rs1 >> (rs2 & 0x1F) ); break;
-							case 6: rval = rs1 | rs2; break;
-							case 7: rval = rs1 & rs2; break;
-						}
+						static const void * suboptable[] = {
+							&&SO00, &&SO01, &&SO02, &&SO03, &&SO04, &&SO05, &&SO06, &&SO07, };
+
+						goto *suboptable[ subop ];
+
+							SO00: rval = (is_reg && (ir & 0x40000000) ) ? ( rs1 - rs2 ) : ( rs1 + rs2 ); goto rvalwrite; 
+							SO01: rval = rs1 << (rs2 & 0x1F); goto rvalwrite;
+							SO02: rval = (int32_t)rs1 < (int32_t)rs2; goto rvalwrite;
+							SO03: rval = rs1 < rs2; goto rvalwrite;
+							SO04: rval = rs1 ^ rs2; goto rvalwrite;
+							SO05: rval = (ir & 0x40000000 ) ? ( ((int32_t)rs1) >> (rs2 & 0x1F) ) : ( rs1 >> (rs2 & 0x1F) ); goto rvalwrite;
+							SO06: rval = rs1 | rs2; goto rvalwrite;
+							SO07: rval = rs1 & rs2; goto rvalwrite;
 					}
-					break;
+					//goto rvalwrite;
 				}
-				case 0x0f: // 0b0001111
+				C0x0f: // 0b0001111
 					rdid = 0;   // fencetype = (ir >> 12) & 0b111; We ignore fences in this impl.
-					break;
-				case 0x73: // Zifencei+Zicsr  (0b1110011)
+					goto norvalwrite;
+				C0x73: // Zifencei+Zicsr  (0b1110011)
 				{
+					uint32_t subop = (ir>>12)&7;
 					uint32_t csrno = ir >> 20;
-					uint32_t microop = ( ir >> 12 ) & 0x7;
-					if( (microop & 3) ) // It's a Zicsr function.
+
+					if( (subop & 3) ) // It's a Zicsr function.
 					{
 						int rs1imm = (ir >> 15) & 0x1f;
 						uint32_t rs1 = REG(rs1imm);
@@ -381,7 +410,7 @@ MINIRV32_STEPPROTO
 							break;
 						}
 
-						switch( microop )
+						switch( subop )
 						{
 							case 1: writeval = rs1; break;  			//CSRRW
 							case 2: writeval = rval | rs1; break;		//CSRRS
@@ -413,7 +442,7 @@ MINIRV32_STEPPROTO
 							break;
 						}
 					}
-					else if( microop == 0x0 ) // "SYSTEM" 0b000
+					else if( subop == 0x0 ) // "SYSTEM" 0b000
 					{
 						rdid = 0;
 						if( csrno == 0x105 ) //WFI (Wait for interrupts)
@@ -442,13 +471,14 @@ MINIRV32_STEPPROTO
 							case 1:	trap = (3+1); break; // EBREAK 3 = "Breakpoint"
 							default: trap = (2+1); break; // Illegal opcode.
 							}
+							goto calltrap;
 						}
 					}
 					else
-						trap = (2+1); 				// Note micrrop 0b100 == undefined.
-					break;
+						{ trap = (2+1); 	goto calltrap; }			// Note micrrop 0b100 == undefined.
+					goto rvalwrite;
 				}
-				case 0x2f: // RV32A (0b00101111)
+				C0x2f: // RV32A (0b00101111)
 				{
 					uint32_t rs1 = REG((ir >> 15) & 0x1f);
 					uint32_t rs2 = REG((ir >> 20) & 0x1f);
@@ -462,6 +492,7 @@ MINIRV32_STEPPROTO
 					{
 						trap = (7+1); //Store/AMO access fault
 						rval = rs1 + MINIRV32_RAM_IMAGE_OFFSET;
+						goto calltrap;
 					}
 					else
 					{
@@ -488,29 +519,38 @@ MINIRV32_STEPPROTO
 							case 20: rs2 = ((int32_t)rs2>(int32_t)rval)?rs2:rval; break; //AMOMAX.W (0b10100)
 							case 24: rs2 = (rs2<rval)?rs2:rval; break; //AMOMINU.W (0b11000)
 							case 28: rs2 = (rs2>rval)?rs2:rval; break; //AMOMAXU.W (0b11100)
-							default: trap = (2+1); dowrite = 0; break; //Not supported.
+							default: trap = (2+1); dowrite = 0;  goto calltrap; break; //Not supported.
 						}
 						if( dowrite ) MINIRV32_STORE4( rs1, rs2 );
 					}
-					break;
+					goto rvalwrite;
 				}
-				default: trap = (2+1); // Fault: Invalid opcode.
-			}
+				Cfail: trap = (2+1); goto calltrap; // Fault: Invalid opcode.
+			//}
 
 			// If there was a trap, do NOT allow register writeback.
-			if( trap )
-				break;
+			//if( trap )
+			//	break;
 
+rvalwrite:
 			if( rdid )
 			{
 				REGSET( rdid, rval ); // Write back register.
 			}
+norvalwrite:
 		}
 
 		MINIRV32_POSTEXEC( pc, ir, trap );
 
 		pc += 4;
 	}
+
+	if( CSR( cyclel ) > cycle ) CSR( cycleh )++;
+	SETCSR( cyclel, cycle );
+	SETCSR( pc, pc );
+	return 0;
+
+	calltrap:
 
 	// Handle traps and interrupts.
 	if( trap )
@@ -537,6 +577,10 @@ MINIRV32_STEPPROTO
 
 		trap = 0;
 		pc += 4;
+	}
+	else
+	{
+		printf( "NOTRAP\n" );
 	}
 
 	if( CSR( cyclel ) > cycle ) CSR( cycleh )++;
