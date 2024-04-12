@@ -111,6 +111,16 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 #define REGSET( x, val ) { state->regs[x] = val; }
 #endif
 
+void failcall() { printf( "FAIL\n" );}
+void okcall() { printf( "OK\n" ); }
+
+// Type your code here, or load an example.
+int square( uint64_t num, uint64_t jumptable[128] ) {
+    if( num > jumptable[1] )
+		failcall();
+	else okcall();
+}
+
 #ifndef MINIRV32_STEPPROTO
 MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count )
 #else
@@ -153,6 +163,25 @@ MINIRV32_STEPPROTO
 	uint32_t rdid = 0;
 	uint32_t ofs_pc;
 
+
+
+	static const void * jumptable[] = {
+		&&Cfail, &&Cfail, &&Cfail, &&C0x03, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x0f,
+		&&Cfail, &&Cfail, &&Cfail, &&C0x13, &&Cfail, &&Cfail, &&Cfail, &&C0x17, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+		&&Cfail, &&Cfail, &&Cfail, &&C0x23, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x2f,
+		&&Cfail, &&Cfail, &&Cfail, &&C0x33, &&Cfail, &&Cfail, &&Cfail, &&C0x37, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+		&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+		&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+		&&Cfail, &&Cfail, &&Cfail, &&C0x63, &&Cfail, &&Cfail, &&Cfail, &&C0x67, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x6F,
+		&&Cfail, &&Cfail, &&Cfail, &&C0x73, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+	};
+
+	uint64_t important_pointers[] = {
+		(uint64_t)MINI_RV32_RAM_SIZE,
+		(uint64_t)jumptable,
+		(uint64_t)image,
+	};
+
 	goto next_instruction;
 
 
@@ -170,36 +199,27 @@ nowrite:
 	if( cycle == endcycle ) goto done;
 
 
+
+//		(uint64_t)MINIRV32_RAM_IMAGE_OFFSET,
+
+
 next_instruction:
 
 	cycle++;
 	//ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
 
-
-	static const void * jumptable[] = {
-		&&Cfail, &&Cfail, &&Cfail, &&C0x03, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x0f,
-		&&Cfail, &&Cfail, &&Cfail, &&C0x13, &&Cfail, &&Cfail, &&Cfail, &&C0x17, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
-		&&Cfail, &&Cfail, &&Cfail, &&C0x23, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x2f,
-		&&Cfail, &&Cfail, &&Cfail, &&C0x33, &&Cfail, &&Cfail, &&Cfail, &&C0x37, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
-		&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
-		&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
-		&&Cfail, &&Cfail, &&Cfail, &&C0x63, &&Cfail, &&Cfail, &&Cfail, &&C0x67, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x6F,
-		&&Cfail, &&Cfail, &&Cfail, &&C0x73, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
-	};
-
-printf( "%08x\n", pc );
 	asm volatile goto(
-"			mov %[pc], %%eax\n"
-"			sub %[offset], %%eax\n"
+			// eax = eax - MINIRV32_RAM_IMAGE_OFFSET (Assume is 0x80000000)
+"			lea -2147483648(%[pc]), %%eax\n"
 "			mov %%eax, %[ofs_pc]\n"
 			// if( ofs_pc >= MINI_RV32_RAM_SIZE )
-"			cmp %[ram_size], %%eax\n"
-"			jge %l[trap2]\n"
+"			cmp 0(%[important_pointers]), %%eax\n"
+"			jae %l[trap2]\n"
 			//	if( ofs_pc & 3 )
 "			and $3, %%eax\n"
 "			jne %l[trap1]\n"
-"			mov %[ofs_pc], %%edi\n"
 //	ir = MINIRV32_LOAD4( ofs_pc );
+"			mov %[ofs_pc], %%edi\n"
 "			add %[image], %%rdi\n"
 "			mov (%%rdi), %%eax\n"
 "			mov %%eax, %[ir]\n"
@@ -207,14 +227,16 @@ printf( "%08x\n", pc );
 "			shr $7, %%eax\n"
 "			and $31, %%eax\n"
 "			mov %%eax, %[rdid]\n"
-"			mov %[ir], %%edi\n"
 //  goto *jumptable[ir & 0x7f];
-"			and $127, %%rdi\n"
-"			add %[jumptable], %%rdi\n" // XXX Jumptable looks wrong.
-"			movq (%%rdi), %%rax\n"      //XXX BROKEN Why is RAX 
-"			jmp %%rax\n"
-: [ofs_pc]"=r"(ofs_pc), [ir]"=r"(ir), [pc]"+r"(pc), [trap]"+r"(trap), [rdid]"+r"(rdid) : [jumptable]"r"(&jumptable[0]), [offset]"r"(MINIRV32_RAM_IMAGE_OFFSET), [ram_size]"r"(MINI_RV32_RAM_SIZE), [image]"r"(image)  : "eax", "rdx", "rdi", "rsi" : trap2, trap1 );
+"			mov %[ir], %%eax\n"
+"			and $127, %%eax\n"
+"			jmp *(%[jumptable],%%rax,8)\n"
+: [ofs_pc]"=r"(ofs_pc), [ir]"=r"(ir), [pc]"+r"(pc), [trap]"+r"(trap), [rdid]"+r"(rdid) 
+: [important_pointers]"r"(important_pointers), [jumptable]"r"(jumptable), [image]"r"(image) 
+: "eax", "rdx", "rdi", "rsi", "memory" 
+: trap2, trap1, C0x37, C0x17, C0x6F, C0x67, C0x63, C0x03, C0x23, C0x13, C0x33, C0x0f, C0x73 );
 
+//	printf( "*** %08x  %08x [%08x] %08x [%08x]\n", ir, image, ofs_pc, important_pointers[0], ir );
 
 //	if( ofs_pc >= MINI_RV32_RAM_SIZE )
 //	{
@@ -568,7 +590,7 @@ printf( "%08x\n", pc );
 	Cfail: trap = (2+1); goto trapl; // Fault: Invalid opcode.
 
 trap1:	trap = 1; goto trapl;
-trap2:  trap = 2; goto trap2;
+trap2: printf( "TRAP2: ofs: %08x/%08x\n", ofs_pc, important_pointers[0] ); trap = 2; goto trap2;
 
 trapl:
 
