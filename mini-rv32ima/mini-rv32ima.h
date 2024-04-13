@@ -198,12 +198,12 @@ dowrite:
 nowrite:
 	//MINIRV32_POSTEXEC( pc, ir, trap );
 	pc += 4;
+	cycle++;
 	if( cycle == endcycle ) goto done;
 //		(uint64_t)MINIRV32_RAM_IMAGE_OFFSET,
 
 next_instruction:
 
-	cycle++;
 	//ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
 //printf( "%08x %08x %08x\n", jumptable[0x37], jumptable[0x67], &&dowrite );
 	asm volatile goto(
