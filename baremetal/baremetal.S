@@ -15,7 +15,7 @@ _start:
 
 .align 4
 asm_label:
-	.ascii "I'm an assembly function."
+	.ascii "I'm an assembly function Woot Woot."
 	.byte 0
 
 .section .text
