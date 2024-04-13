@@ -164,15 +164,19 @@ MINIRV32_STEPPROTO
 	uint32_t ofs_pc;
 
 
+	extern void * C0x37;
+	extern void * C0x17;
+	extern void * C0x6F;
+	extern void * C0x67;
 
 	static const void * jumptable[] = {
 		&&Cfail, &&Cfail, &&Cfail, &&C0x03, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x0f,
-		&&Cfail, &&Cfail, &&Cfail, &&C0x13, &&Cfail, &&Cfail, &&Cfail, &&C0x17, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+		&&Cfail, &&Cfail, &&Cfail, &&C0x13, &&Cfail, &&Cfail, &&Cfail, &C0x17, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
 		&&Cfail, &&Cfail, &&Cfail, &&C0x23, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x2f,
-		&&Cfail, &&Cfail, &&Cfail, &&C0x33, &&Cfail, &&Cfail, &&Cfail, &&C0x37, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
+		&&Cfail, &&Cfail, &&Cfail, &&C0x33, &&Cfail, &&Cfail, &&Cfail, &C0x37, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
 		&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
 		&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
-		&&Cfail, &&Cfail, &&Cfail, &&C0x63, &&Cfail, &&Cfail, &&Cfail, &&C0x67, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x6F,
+		&&Cfail, &&Cfail, &&Cfail, &&C0x63, &&Cfail, &&Cfail, &&Cfail, &C0x67, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &C0x6F,
 		&&Cfail, &&Cfail, &&Cfail, &&C0x73, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
 	};
 
@@ -193,48 +197,107 @@ dowrite:
 
 nowrite:
 	//MINIRV32_POSTEXEC( pc, ir, trap );
-
 	pc += 4;
-
 	if( cycle == endcycle ) goto done;
-
-
-
 //		(uint64_t)MINIRV32_RAM_IMAGE_OFFSET,
-
 
 next_instruction:
 
 	cycle++;
 	//ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
-
+//printf( "%08x %08x %08x\n", jumptable[0x37], jumptable[0x67], &&dowrite );
 	asm volatile goto(
-			// eax = eax - MINIRV32_RAM_IMAGE_OFFSET (Assume is 0x80000000)
+	/* eax = eax - MINIRV32_RAM_IMAGE_OFFSET (Assume is 0x80000000) */
+//"			inc %[cycle]\n"
+"next_instruction_internal:"
 "			lea -2147483648(%[pc]), %%eax\n"
 "			mov %%eax, %[ofs_pc]\n"
-			// if( ofs_pc >= MINI_RV32_RAM_SIZE )
+	/* if( ofs_pc >= MINI_RV32_RAM_SIZE ) */
 "			cmp 0(%[important_pointers]), %%eax\n"
 "			jae %l[trap2]\n"
-			//	if( ofs_pc & 3 )
+	/*	if( ofs_pc & 3 ) */
 "			and $3, %%eax\n"
 "			jne %l[trap1]\n"
-//	ir = MINIRV32_LOAD4( ofs_pc );
+	/*	ir = MINIRV32_LOAD4( ofs_pc ); */
 "			mov %[ofs_pc], %%edi\n"
 "			add %[image], %%rdi\n"
 "			mov (%%rdi), %%eax\n"
 "			mov %%eax, %[ir]\n"
-///	rdid = (ir >> 7) & 0x1f;
+	/*	rdid = (ir >> 7) & 0x1f; */
 "			shr $7, %%eax\n"
 "			and $31, %%eax\n"
 "			mov %%eax, %[rdid]\n"
-//  goto *jumptable[ir & 0x7f];
+	/*  goto *jumptable[ir & 0x7f]; */
 "			mov %[ir], %%eax\n"
 "			and $127, %%eax\n"
-"			jmp *(%[jumptable],%%rax,8)\n"
-: [ofs_pc]"=r"(ofs_pc), [ir]"=r"(ir), [pc]"+r"(pc), [trap]"+r"(trap), [rdid]"+r"(rdid) 
-: [important_pointers]"r"(important_pointers), [jumptable]"r"(jumptable), [image]"r"(image) 
-: "eax", "rdx", "rdi", "rsi", "memory" 
-: trap2, trap1, C0x37, C0x17, C0x6F, C0x67, C0x63, C0x03, C0x23, C0x13, C0x33, C0x0f, C0x73 );
+"			mov 8(%[important_pointers]), %%rdi\n" // TODO: OPTIMIZE ME!
+"			jmp *(%%rdi,%%rax,8)\n"
+"C0x37:\n"
+//	rval = ( ir & 0xfffff000 );
+"			mov %[ir], %[rval]\n"
+"			and $-4096, %[rval]\n"
+"			jmp %l[dowrite]\n"
+//	C0x17: // AUIPC (0b0010111)
+"C0x17:\n"
+"			mov %[ir], %[rval]\n"
+"			and $-4096, %[rval]\n"
+"			add %[pc], %[rval]\n"
+"			jmp %l[dowrite]\n"
+//		rval = pc + ( ir & 0xfffff000 );
+//		goto dowrite;
+"C0x6F:\n"
+//		int32_t reladdy = ((ir & 0x80000000)>>11) | ((ir & 0x7fe00000)>>20) | ((ir & 0x00100000)>>9) | ((ir&0x000ff000));
+//		if( reladdy & 0x00100000 ) reladdy |= 0xffe00000; // Sign extension.
+//		rval = pc + 4;
+//		pc = pc + reladdy - 4;
+//		goto dowrite;
+"			mov %[ir], %%eax\n"
+"			mov %[ir], %%edi\n"
+"			mov %[ir], %%ebx\n"
+"			shr    $0xb,%%eax\n"
+"			shr    $0x14,%%edi\n"
+"			and    $0x7fe,%%edi\n"
+"			and    $0x100000,%%eax\n"
+"			or     %%edi,%%eax\n"
+"			mov    %[ir],%%edi\n"
+"			shr    $0x9,%%ebx\n"
+"			and    $0xff000,%%edi\n"
+"			and    $0x800,%%ebx\n"
+"			or     %%edi,%%eax\n"
+"			or     %%eax,%%ebx\n"
+//		if( reladdy & 0x00100000 ) reladdy |= 0xffe00000; // Sign extension.
+"			mov    %%ebx,%%edi\n"
+"			or     $0xffe00000,%%edi\n"
+"			test   $0x100000,%%eax\n"
+"			cmovne %%edi,%%ebx\n"
+//		rval = pc + 4;
+"			lea 4(%[pc]), %[rval]\n"
+//		pc = pc + reladdy - 4;
+"			lea -4(%[pc],%%ebx), %[pc]\n" // Was (%rcx, %rdx,1), %r12d
+"			jmp %l[dowrite]\n"
+"C0x67:\n"
+//		rval = pc + 4;
+"			lea    0x4(%[pc]),%[rval]\n"
+//		uint32_t imm = ir >> 20;
+"			mov    %[ir], %[pc]\n"
+"			shr    $0x14,%[pc]\n"
+//		int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
+"			mov    %[pc],%%eax\n"
+"			or     $0xfffff000,%%eax\n"
+"			test   $0x800,%[pc]\n"
+"			cmovne %%eax,%[pc]\n"
+//		pc = ( (REG( (ir >> 15) & 0x1f ) + imm_se) & ~1) - 4;
+"			mov    %[ir], %%eax\n"
+"			shr    $0xf, %%eax\n"
+"			and    $0x1f, %%eax\n"
+"			add    (%[state], %%rax, 4),%[pc]\n"
+"			sub    $4, %[pc]\n"
+"			and    $0xfffffffe, %[pc]\n"
+"			jmp    %l[dowrite]\n"
+: [ofs_pc]"=r"(ofs_pc), [ir]"=r"(ir), [pc]"+r"(pc), [trap]"+r"(trap), [rdid]"=r"(rdid), [rval]"=r"(rval)
+: [important_pointers]"r"(important_pointers), [image]"r"(image), [state]"r"(state)
+: "rax", "rbx", "rdi", "memory" 
+: trap2, trap1, C0x63, C0x03, C0x23, C0x13, C0x33, C0x0f, C0x73, dowrite );
 
 //	printf( "*** %08x  %08x [%08x] %08x [%08x]\n", ir, image, ofs_pc, important_pointers[0], ir );
 
@@ -256,28 +319,28 @@ next_instruction:
 
 	goto *jumptable[ir & 0x7f];
 
-	C0x37: // LUI (0b0110111)
-		rval = ( ir & 0xfffff000 );
-		goto dowrite;
-	C0x17: // AUIPC (0b0010111)
-		rval = pc + ( ir & 0xfffff000 );
-		goto dowrite;
-	C0x6F: // JAL (0b1101111)
-	{
-		int32_t reladdy = ((ir & 0x80000000)>>11) | ((ir & 0x7fe00000)>>20) | ((ir & 0x00100000)>>9) | ((ir&0x000ff000));
-		if( reladdy & 0x00100000 ) reladdy |= 0xffe00000; // Sign extension.
-		rval = pc + 4;
-		pc = pc + reladdy - 4;
-		goto dowrite;
-	}
-	C0x67: // JALR (0b1100111)
-	{
-		uint32_t imm = ir >> 20;
-		int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
-		rval = pc + 4;
-		pc = ( (REG( (ir >> 15) & 0x1f ) + imm_se) & ~1) - 4;
-		goto dowrite;
-	}
+//	C0x37: // LUI (0b0110111)
+//		//rval = ( ir & 0xfffff000 );
+//		goto dowrite;
+//	C0x17: // AUIPC (0b0010111)
+//		rval = pc + ( ir & 0xfffff000 );
+//		goto dowrite;
+//	C0x6F: // JAL (0b1101111)
+//	{
+//		int32_t reladdy = ((ir & 0x80000000)>>11) | ((ir & 0x7fe00000)>>20) | ((ir & 0x00100000)>>9) | ((ir&0x000ff000));
+//		if( reladdy & 0x00100000 ) reladdy |= 0xffe00000; // Sign extension.
+//		rval = pc + 4;
+//		pc = pc + reladdy - 4;
+//		goto dowrite;
+//	}
+//	C0x67: // JALR (0b1100111)
+//	{
+//		uint32_t imm = ir >> 20;
+//		int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
+//		rval = pc + 4;
+//		pc = ( (REG( (ir >> 15) & 0x1f ) + imm_se) & ~1) - 4;
+//		goto dowrite;
+//	}
 	C0x63: // Branch (0b1100011)
 	{
 		uint32_t immm4 = ((ir & 0xf00)>>7) | ((ir & 0x7e000000)>>20) | ((ir & 0x80) << 4) | ((ir >> 31)<<12);
