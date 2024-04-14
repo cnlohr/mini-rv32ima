@@ -158,6 +158,7 @@ MINIRV32_STEPPROTO
 	extern void * C0x17;
 	extern void * C0x6F;
 	extern void * C0x67;
+	extern void * C0x63;
 
 	static const void * jumptable[] = {
 		&&Cfail, &&Cfail, &&Cfail, &&C0x03, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&C0x0f,
@@ -166,7 +167,7 @@ MINIRV32_STEPPROTO
 		&&Cfail, &&Cfail, &&Cfail, &&C0x33, &&Cfail, &&Cfail, &&Cfail, &C0x37, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
 		&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
 		&&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
-		&&Cfail, &&Cfail, &&Cfail, &&C0x63, &&Cfail, &&Cfail, &&Cfail, &C0x67, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &C0x6F,
+		&&Cfail, &&Cfail, &&Cfail, &C0x63, &&Cfail, &&Cfail, &&Cfail, &C0x67, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &C0x6F,
 		&&Cfail, &&Cfail, &&Cfail, &&C0x73, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
 	};
 
@@ -193,9 +194,29 @@ nowrite:
 //		(uint64_t)MINIRV32_RAM_IMAGE_OFFSET,
 
 #define INTERNAL_DO_WRITE \
-	"test %[rdid], %[rdid]\n" \
-	"cmove %[rval], (%[state], %[rdid], 4)\n"
-#define INTERNAL_NO_WRITE \
+	"mov %[rdid], %%edx\n" \
+	"mov $0, %%eax\n" \
+	"test %%edx, %%edx\n" \
+	"mov %%edx, %%edx\n" \
+	"cmove %%eax, %[rval]\n" \
+	"mov %[rval], (%[state], %%rdx, 4)\n"
+/*
+        xor     eax, eax
+        test    edx, edx
+        mov     edx, edx
+        cmove   esi, eax
+        mov     eax, esi
+        mov     QWORD PTR jumptable[0+rdx*8], rax
+*/
+
+//        test    edx, edx
+ //       mov     eax, esi
+  //      mov     edx, 0
+   //     cmovene   eax, edx
+
+	/*"cmovne %[rval], (%[state], %[rdid], 4)\n"*/
+
+#define INTERNAL_FINISH \
 	"add $4, %[pc]\n" \
 	"inc %[cycle]\n" \
 	"cmp %[cycle], %[endcycle]\n" \
@@ -238,13 +259,23 @@ next_instruction:
 //	rval = ( ir & 0xfffff000 );
 "			mov %[ir], %[rval]\n"
 "			and $-4096, %[rval]\n"
-"			jmp %l[dowrite]\n"
+/*"			jmp %l[dowrite]\n"*/
+INTERNAL_DO_WRITE
+INTERNAL_FINISH
+INTERNAL_NEXT_INSTRUCTION
+
+
 //	C0x17: // AUIPC (0b0010111)
 "C0x17:\n"
 "			mov %[ir], %[rval]\n"
 "			and $-4096, %[rval]\n"
 "			add %[pc], %[rval]\n"
-"			jmp %l[dowrite]\n"
+/*"			jmp %l[dowrite]\n"*/
+INTERNAL_DO_WRITE
+INTERNAL_FINISH
+INTERNAL_NEXT_INSTRUCTION
+
+
 //		rval = pc + ( ir & 0xfffff000 );
 //		goto dowrite;
 "C0x6F:\n"
@@ -279,7 +310,7 @@ next_instruction:
 //"			jmp %l[dowrite]\n"
 
 INTERNAL_DO_WRITE
-INTERNAL_NO_WRITE
+INTERNAL_FINISH
 INTERNAL_NEXT_INSTRUCTION
 
 "C0x67:\n"
@@ -300,11 +331,98 @@ INTERNAL_NEXT_INSTRUCTION
 "			add    (%[state], %%rax, 4),%[pc]\n"
 "			and    $0xfffffffe, %[pc]\n"
 "			sub    $4, %[pc]\n"
-"			jmp    %l[dowrite]\n"
+/*"			jmp    %l[dowrite]\n"*/
+INTERNAL_DO_WRITE
+INTERNAL_FINISH
+INTERNAL_NEXT_INSTRUCTION
+
+"C0x63:\n"
+//	uint32_t immm4 = ((ir & 0xf00)>>7) | ((ir & 0x7e000000)>>20) | ((ir & 0x80) << 4) | ((ir >> 31)<<12);
+"			mov    %[ir],%%edi\n"
+"			mov    %[ir],%%ebx\n"
+"			shr    $0x14,%%edi\n"
+"			shr    $0x7,%%ebx\n"
+"			mov    %%edi,%%eax\n"
+"			and    $0x1e,%%ebx\n"
+"			and    $0x7e0,%%eax\n"
+"			or     %%eax,%%ebx\n"
+"			mov    %%edx,%%eax\n"
+"			shl    $0x4,%%eax\n"
+"			and    $0x800,%%eax\n"
+"			or     %%eax,%%ebx\n"
+"			mov    %%edx,%%eax\n"
+"			shr    $0x1f,%%eax\n"
+"			shl    $0xc,%%eax\n"
+"			or     %%eax,%%ebx\n"
+//		if( immm4 & 0x1000 ) immm4 |= 0xffffe000;
+"			mov    %%ebx,%%eax\n"
+"			or     $0xffffe000,%%eax\n"
+"			test   %%eax,%%eax\n"
+"			cmovne %%eax,%%ebx\n"  /* ebx = imm4 */
+//		int32_t rs1 = REG((ir >> 15) & 0x1f);
+"			mov    %[ir],%%edi\n"
+"			shr    $15, %%edi\n"
+"			and    $31, %%edi\n"
+"			mov    (%[state], %%edi, 4), %%edi\n"
+			 /* edi = rs1 */
+//		int32_t rs2 = REG((ir >> 20) & 0x1f);
+"			mov    %[ir],%%eax\n"
+"			shr    $20, %%eax\n"
+"			and    $31, %%eax\n"
+"			mov    (%[state], %%eax, 4), %%eax\n"
+			/* eax = rs2 */
+//		immm4 = pc + immm4 - 4;
+"			lea    -4(%[pc],%%ebx), %%ebx\n"
+//		rdid = 0;  << Is this needed?
+"			mov    $0, %[rdid]\n"
+//		switch( ( ir >> 12 ) & 0x7 )
+"			shr    $12, %[ir]\n"
+"			and    $7, %[ir]\n"
+//  Jump based on IR
+
+XXX TODO PICK UP HERE
+
+//		{
+//			// BEQ, BNE, BLT, BGE, BLTU, BGEU
+//			case 0: if( rs1 == rs2 ) pc = immm4; break;
+//			case 1: if( rs1 != rs2 ) pc = immm4; break;
+//			case 4: if( rs1 < rs2 ) pc = immm4; break;
+//			case 5: if( rs1 >= rs2 ) pc = immm4; break; //BGE
+//			case 6: if( (uint32_t)rs1 < (uint32_t)rs2 ) pc = immm4; break;   //BLTU
+//			case 7: if( (uint32_t)rs1 >= (uint32_t)rs2 ) pc = immm4; break;  //BGEU
+//			default: trap = (2+1); goto trapl;
+//		}
+//		goto nowrite;
+
+/*
+    369c:	4c 8d 15 25 1d 00 00 	lea    0x1d25(%rip),%r10        # 53c8 <_IO_stdin_used+0x3c8>
+		int32_t rs2 = REG((ir >> 20) & 0x1f);
+    36a3:	83 e7 1f             	and    $0x1f,%edi
+		switch( ( ir >> 12 ) & 0x7 )
+    36a6:	83 e2 07             	and    $0x7,%edx
+		int32_t rs1 = REG((ir >> 15) & 0x1f);
+    36a9:	41 c1 e9 0f          	shr    $0xf,%r9d
+		int32_t rs2 = REG((ir >> 20) & 0x1f);
+    36ad:	8b 7c bd 00          	mov    0x0(%rbp,%rdi,4),%edi
+		switch( ( ir >> 12 ) & 0x7 )
+    36b1:	49 63 14 92          	movslq (%r10,%rdx,4),%rdx
+		int32_t rs1 = REG((ir >> 15) & 0x1f);
+    36b5:	41 83 e1 1f          	and    $0x1f,%r9d
+		immm4 = pc + immm4 - 4;
+    36b9:	44 01 f1             	add    %r14d,%ecx
+		int32_t rs1 = REG((ir >> 15) & 0x1f);
+    36bc:	46 8b 4c 8d 00       	mov    0x0(%rbp,%r9,4),%r9d
+		switch( ( ir >> 12 ) & 0x7 )
+    36c1:	4c 01 d2             	add    %r10,%rdx
+    36c4:	3e ff e2             	notrack jmp *%rdx
+    36c7:	66 0f 1f 84 00 00 00 	nopw   0x0(%rax,%rax,1)
+    36ce:	00 00 
+*/
+
 : [ofs_pc]"=r"(ofs_pc), [ir]"=r"(ir), [pc]"+r"(pc), [trap]"+r"(trap), [rdid]"=r"(rdid), [rval]"=r"(rval), [cycle]"+r"(cycle)
 : [important_pointers]"r"(important_pointers), [image]"r"(image), [state]"r"(state), [endcycle]"r"(endcycle)
 : "rax", "rbx", "rdi", "memory" 
-: trap2, trap1, C0x63, C0x03, C0x23, C0x13, C0x33, C0x0f, C0x73, dowrite, done );
+: trap2, trap1, C0x03, C0x23, C0x13, C0x33, C0x0f, C0x73, dowrite, done );
 
 //	printf( "*** %08x  %08x [%08x] %08x [%08x]\n", ir, image, ofs_pc, important_pointers[0], ir );
 
@@ -348,6 +466,7 @@ INTERNAL_NEXT_INSTRUCTION
 //		pc = ( (REG( (ir >> 15) & 0x1f ) + imm_se) & ~1) - 4;
 //		goto dowrite;
 //	}
+/* 
 	C0x63: // Branch (0b1100011)
 	{
 		uint32_t immm4 = ((ir & 0xf00)>>7) | ((ir & 0x7e000000)>>20) | ((ir & 0x80) << 4) | ((ir >> 31)<<12);
@@ -369,6 +488,8 @@ INTERNAL_NEXT_INSTRUCTION
 		}
 		goto nowrite;
 	}
+*/
+
 	C0x03: // Load (0b0000011)
 	{
 		uint32_t rs1 = REG((ir >> 15) & 0x1f);
