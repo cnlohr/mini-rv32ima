@@ -111,16 +111,6 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 #define REGSET( x, val ) { state->regs[x] = val; }
 #endif
 
-void failcall() { printf( "FAIL\n" );}
-void okcall() { printf( "OK\n" ); }
-
-// Type your code here, or load an example.
-int square( uint64_t num, uint64_t jumptable[128] ) {
-    if( num > jumptable[1] )
-		failcall();
-	else okcall();
-}
-
 #ifndef MINIRV32_STEPPROTO
 MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count )
 #else
@@ -202,6 +192,39 @@ nowrite:
 	if( cycle == endcycle ) goto done;
 //		(uint64_t)MINIRV32_RAM_IMAGE_OFFSET,
 
+#define INTERNAL_DO_WRITE \
+	"test %[rdid], %[rdid]\n" \
+	"cmove %[rval], (%[state], %[rdid], 4)\n"
+#define INTERNAL_NO_WRITE \
+	"add $4, %[pc]\n" \
+	"inc %[cycle]\n" \
+	"cmp %[cycle], %[endcycle]\n" \
+	"je %l[done]\n"
+
+#define INTERNAL_NEXT_INSTRUCTION \
+"			lea -2147483648(%[pc]), %%eax\n" \
+"			mov %%eax, %[ofs_pc]\n" \
+	/* if( ofs_pc >= MINI_RV32_RAM_SIZE ) */ \
+"			cmp 0(%[important_pointers]), %%eax\n" \
+"			jae %l[trap2]\n" \
+	/*	if( ofs_pc & 3 ) */ \
+"			and $3, %%eax\n" \
+"			jne %l[trap1]\n" \
+	/*	ir = MINIRV32_LOAD4( ofs_pc ); */ \
+"			mov %[ofs_pc], %%edi\n" \
+"			add %[image], %%rdi\n" \
+"			mov (%%rdi), %%eax\n" \
+"			mov %%eax, %[ir]\n" \
+	/*	rdid = (ir >> 7) & 0x1f; */ \
+"			shr $7, %%eax\n" \
+"			and $31, %%eax\n" \
+"			mov %%eax, %[rdid]\n" \
+	/*  goto *jumptable[ir & 0x7f]; */ \
+"			mov %[ir], %%eax\n" \
+"			and $127, %%eax\n" \
+"			mov 8(%[important_pointers]), %%rdi\n" /* TODO: OPTIMIZE ME! */ \
+"			jmp *(%%rdi,%%rax,8)\n"
+
 next_instruction:
 
 	//ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
@@ -210,28 +233,7 @@ next_instruction:
 	/* eax = eax - MINIRV32_RAM_IMAGE_OFFSET (Assume is 0x80000000) */
 //"			inc %[cycle]\n"
 "next_instruction_internal:"
-"			lea -2147483648(%[pc]), %%eax\n"
-"			mov %%eax, %[ofs_pc]\n"
-	/* if( ofs_pc >= MINI_RV32_RAM_SIZE ) */
-"			cmp 0(%[important_pointers]), %%eax\n"
-"			jae %l[trap2]\n"
-	/*	if( ofs_pc & 3 ) */
-"			and $3, %%eax\n"
-"			jne %l[trap1]\n"
-	/*	ir = MINIRV32_LOAD4( ofs_pc ); */
-"			mov %[ofs_pc], %%edi\n"
-"			add %[image], %%rdi\n"
-"			mov (%%rdi), %%eax\n"
-"			mov %%eax, %[ir]\n"
-	/*	rdid = (ir >> 7) & 0x1f; */
-"			shr $7, %%eax\n"
-"			and $31, %%eax\n"
-"			mov %%eax, %[rdid]\n"
-	/*  goto *jumptable[ir & 0x7f]; */
-"			mov %[ir], %%eax\n"
-"			and $127, %%eax\n"
-"			mov 8(%[important_pointers]), %%rdi\n" // TODO: OPTIMIZE ME!
-"			jmp *(%%rdi,%%rax,8)\n"
+	INTERNAL_NEXT_INSTRUCTION
 "C0x37:\n"
 //	rval = ( ir & 0xfffff000 );
 "			mov %[ir], %[rval]\n"
@@ -274,7 +276,12 @@ next_instruction:
 "			lea 4(%[pc]), %[rval]\n"
 //		pc = pc + reladdy - 4;
 "			lea -4(%[pc],%%ebx), %[pc]\n" // Was (%rcx, %rdx,1), %r12d
-"			jmp %l[dowrite]\n"
+//"			jmp %l[dowrite]\n"
+
+INTERNAL_DO_WRITE
+INTERNAL_NO_WRITE
+INTERNAL_NEXT_INSTRUCTION
+
 "C0x67:\n"
 //		rval = pc + 4;
 "			lea    0x4(%[pc]),%[rval]\n"
@@ -291,13 +298,13 @@ next_instruction:
 "			shr    $0xf, %%eax\n"
 "			and    $0x1f, %%eax\n"
 "			add    (%[state], %%rax, 4),%[pc]\n"
-"			sub    $4, %[pc]\n"
 "			and    $0xfffffffe, %[pc]\n"
+"			sub    $4, %[pc]\n"
 "			jmp    %l[dowrite]\n"
-: [ofs_pc]"=r"(ofs_pc), [ir]"=r"(ir), [pc]"+r"(pc), [trap]"+r"(trap), [rdid]"=r"(rdid), [rval]"=r"(rval)
-: [important_pointers]"r"(important_pointers), [image]"r"(image), [state]"r"(state)
+: [ofs_pc]"=r"(ofs_pc), [ir]"=r"(ir), [pc]"+r"(pc), [trap]"+r"(trap), [rdid]"=r"(rdid), [rval]"=r"(rval), [cycle]"+r"(cycle)
+: [important_pointers]"r"(important_pointers), [image]"r"(image), [state]"r"(state), [endcycle]"r"(endcycle)
 : "rax", "rbx", "rdi", "memory" 
-: trap2, trap1, C0x63, C0x03, C0x23, C0x13, C0x33, C0x0f, C0x73, dowrite );
+: trap2, trap1, C0x63, C0x03, C0x23, C0x13, C0x33, C0x0f, C0x73, dowrite, done );
 
 //	printf( "*** %08x  %08x [%08x] %08x [%08x]\n", ir, image, ofs_pc, important_pointers[0], ir );
 
