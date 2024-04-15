@@ -171,10 +171,32 @@ MINIRV32_STEPPROTO
 		&&Cfail, &&Cfail, &&Cfail, &&C0x73, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail, &&Cfail,
 	};
 
-	uint64_t important_pointers[] = {
-		(uint64_t)MINI_RV32_RAM_SIZE,
-		(uint64_t)jumptable,
-		(uint64_t)image,
+
+
+	extern void * branchjump0;
+	extern void * branchjump1;
+	extern void * branchjump4;
+	extern void * branchjump5;
+	extern void * branchjump6;
+	extern void * branchjump7;
+
+	intptr_t important_pointers[] = {
+		(intptr_t)MINI_RV32_RAM_SIZE,
+		(intptr_t)jumptable,
+		(intptr_t)image,
+		(intptr_t)0,
+		(intptr_t)0,
+		(intptr_t)0,
+		(intptr_t)0,
+		(intptr_t)0,
+		(intptr_t)&branchjump0,
+		(intptr_t)&branchjump1,
+		(intptr_t)&&trap3,
+		(intptr_t)&&trap3,
+		(intptr_t)&branchjump4,
+		(intptr_t)&branchjump5,
+		(intptr_t)&branchjump6,
+		(intptr_t)&branchjump7,
 	};
 
 	goto next_instruction;
@@ -253,7 +275,12 @@ next_instruction:
 	asm volatile goto(
 	/* eax = eax - MINIRV32_RAM_IMAGE_OFFSET (Assume is 0x80000000) */
 //"			inc %[cycle]\n"
-"next_instruction_internal:"
+"internal_do_write:\n"
+INTERNAL_DO_WRITE
+"internal_no_write:\n"
+INTERNAL_FINISH
+
+"next_instruction_internal:\n"
 	INTERNAL_NEXT_INSTRUCTION
 "C0x37:\n"
 //	rval = ( ir & 0xfffff000 );
@@ -331,7 +358,6 @@ INTERNAL_NEXT_INSTRUCTION
 "			add    (%[state], %%rax, 4),%[pc]\n"
 "			and    $0xfffffffe, %[pc]\n"
 "			sub    $4, %[pc]\n"
-/*"			jmp    %l[dowrite]\n"*/
 INTERNAL_DO_WRITE
 INTERNAL_FINISH
 INTERNAL_NEXT_INSTRUCTION
@@ -360,17 +386,17 @@ INTERNAL_NEXT_INSTRUCTION
 "			test   %%eax,%%eax\n"
 "			cmovne %%eax,%%ebx\n"  /* ebx = imm4 */
 //		int32_t rs1 = REG((ir >> 15) & 0x1f);
-"			mov    %[ir],%%edi\n"
-"			shr    $15, %%edi\n"
-"			and    $31, %%edi\n"
-"			mov    (%[state], %%edi, 4), %%edi\n"
+"			mov    %[ir],%%eax\n"
+"			shr    $15, %%eax\n"
+"			and    $31, %%eax\n"
+"			mov    (%[state], %%rax, 4), %%edi\n"
 			 /* edi = rs1 */
 //		int32_t rs2 = REG((ir >> 20) & 0x1f);
 "			mov    %[ir],%%eax\n"
 "			shr    $20, %%eax\n"
 "			and    $31, %%eax\n"
-"			mov    (%[state], %%eax, 4), %%eax\n"
-			/* eax = rs2 */
+"			mov    (%[state], %%rax, 4), %[trap]\n"
+			/* trap = rs2 */
 //		immm4 = pc + immm4 - 4;
 "			lea    -4(%[pc],%%ebx), %%ebx\n"
 //		rdid = 0;  << Is this needed?
@@ -379,8 +405,35 @@ INTERNAL_NEXT_INSTRUCTION
 "			shr    $12, %[ir]\n"
 "			and    $7, %[ir]\n"
 //  Jump based on IR
+//"			lea 64(%[important_pointers], %[ir], 8), %[ir]\n"
+"			mov %[ir], %%eax\n"
+"			lea 64(%[important_pointers], %%rax, 8), %[ir]\n"
+"			jmp *(%[ir])\n"
 
-XXX TODO PICK UP HERE
+"branchjump0:\n"
+"			test %[trap], %%edi\n"
+"			cmove %%ebx, %[pc]\n"
+"			jmp internal_no_write\n"
+"branchjump1:\n"
+"			test %[trap], %%edi\n"
+"			cmovne %%ebx, %[pc]\n"
+"			jmp internal_no_write\n"
+"branchjump4:\n"
+"			test %[trap], %%edi\n"
+"			cmovl %%ebx, %[pc]\n"
+"			jmp internal_no_write\n"
+"branchjump5:\n"
+"			test %[trap], %%edi\n"
+"			cmovge %%ebx, %[pc]\n"
+"			jmp internal_no_write\n"
+"branchjump6:\n"
+"			test %[trap], %%edi\n"
+"			cmovb %%ebx, %[pc]\n"
+"			jmp internal_no_write\n"
+"branchjump7:\n"
+"			test %[trap], %%edi\n"
+"			cmovae %%ebx, %[pc]\n"
+"			jmp internal_no_write\n"
 
 //		{
 //			// BEQ, BNE, BLT, BGE, BLTU, BGEU
@@ -419,7 +472,7 @@ XXX TODO PICK UP HERE
     36ce:	00 00 
 */
 
-: [ofs_pc]"=r"(ofs_pc), [ir]"=r"(ir), [pc]"+r"(pc), [trap]"+r"(trap), [rdid]"=r"(rdid), [rval]"=r"(rval), [cycle]"+r"(cycle)
+: [ofs_pc]"=r"(ofs_pc), [ir]"=r"(ir), [pc]"+r"(pc), [trap]"+r"(trap) /* Also temp */, [rdid]"=r"(rdid), [rval]"=r"(rval), [cycle]"+r"(cycle)
 : [important_pointers]"r"(important_pointers), [image]"r"(image), [state]"r"(state), [endcycle]"r"(endcycle)
 : "rax", "rbx", "rdi", "memory" 
 : trap2, trap1, C0x03, C0x23, C0x13, C0x33, C0x0f, C0x73, dowrite, done );
@@ -781,7 +834,8 @@ XXX TODO PICK UP HERE
 	Cfail: trap = (2+1); goto trapl; // Fault: Invalid opcode.
 
 trap1:	trap = 1; goto trapl;
-trap2: printf( "TRAP2: ofs: %08x/%08x\n", ofs_pc, important_pointers[0] ); trap = 2; goto trap2;
+trap2:  trap = 2; goto trapl;
+trap3:  trap = 3; goto trapl;
 
 trapl:
 
