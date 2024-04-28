@@ -81,7 +81,7 @@ You shoud not need to modify `mini-rv32ima.h`, but instead, use `mini-rv32ima.c`
 You can override all functionality by defining the following macros. Here are examples of what `mini-rv32ima.c` does with them.  You can see the definition of the functions, or augment their definitions, by altering `mini-rv32ima.c`.
 
 | Macro | Definition / Comment |
-| --- | --- | --- |
+| --- | --- |
 | `MINIRV32WARN( x... )` | `printf( x );` <br> Warnings emitted from mini-rv32ima.h |
 | `MINIRV32_DECORATE` | `static` <br> How to decorate the functions. |
 | `MINI_RV32_RAM_SIZE` | `ram_amt` <br> A variable, how big is system RAM? |
