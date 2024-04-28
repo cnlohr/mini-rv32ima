@@ -74,6 +74,24 @@ If you just want to play emdoom, and use the prebuilt image:
 
 Everything else: Contact us on my Discord: https://discord.com/invite/CCeyWyZ
 
+## How do I use this in my own project?
+
+You shoud not need to modify `mini-rv32ima.h`, but instead, use `mini-rv32ima.c` as a template for what you are trying to do in your own project.
+
+You can override all functionality by defining the following macros. Here are examples of what `mini-rv32ima.c` does with them.  You can see the definition of the functions, or augment their definitions, by altering `mini-rv32ima.c`.
+
+| Macro | Definition | Comment |
+| --- | --- | --- |
+| `MINIRV32WARN( x... )` | printf( x ); | Warnings emitted from mini-rv32ima.h |
+| `MINIRV32_DECORATE` | static | How to decorate the functions. |
+| `MINI_RV32_RAM_SIZE` | ram_amt | A variable, how big is system RAM? |
+| `MINIRV32_IMPLEMENTATION` |  | If using mini-rv32ima.h, need to define this. |
+| `MINIRV32_POSTEXEC( pc, ir, retval )` | `{ if( retval > 0 ) { if( fail_on_all_faults ) { printf( "FAULT\n" ); return 3; } else retval = HandleException( ir, retval ); } }` | If you want to execute something every time slice. |
+| `MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val )` | `if( HandleControlStore( addy, val ) ) return val;` | Called on non-RAM memory access. |
+| `MINIRV32_HANDLE_MEM_LOAD_CONTROL( addy, rval )` | `rval = HandleControlLoad( addy );` | Called on non-RAM memory access return a value. |
+| `MINIRV32_OTHERCSR_WRITE( csrno, value )` | `HandleOtherCSRWrite( image, csrno, value );` | You can use CSRs for control requests. |
+| `MINIRV32_OTHERCSR_READ( csrno, value )` |  `value = HandleOtherCSRRead( image, csrno );` | You can use CSRs for control requests. |
+
 ## Hopeful goals?
  * Further drive down needed features to run Linux.
    * Remove need for RV32A extension on systems with only one CPU.
