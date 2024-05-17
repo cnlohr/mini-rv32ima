@@ -37,6 +37,11 @@ static int ReadKBByte();
 #define MINIRV32_OTHERCSR_WRITE( csrno, value ) HandleOtherCSRWrite( image, csrno, value );
 #define MINIRV32_OTHERCSR_READ( csrno, value ) value = HandleOtherCSRRead( image, csrno );
 
+
+#ifndef MINIRV32IMATINY
+#include "extension-F.h"
+#endif
+
 #include "mini-rv32ima.h"
 
 uint8_t * ram_image = 0;

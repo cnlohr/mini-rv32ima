@@ -64,6 +64,14 @@
 	#define MINIRV32_LOAD1_SIGNED( ofs ) *(int8_t*)(image + ofs)
 #endif
 
+#ifndef MINIRV32IMA_ADDITIONAL_HEADER
+	#define MINIRV32IMA_ADDITIONAL_HEADER
+#endif
+
+#ifndef MINIRV32IMA_OTHER_OPCODES
+	#define MINIRV32IMA_OTHER_OPCODES
+#endif
+
 // As a note: We quouple-ify these, because in HLSL, we will be operating with
 // uint4's.  We are going to uint4 data to/from system RAM.
 //
@@ -96,6 +104,8 @@ struct MiniRV32IMAState
 	// Bit 2 = WFI (Wait for interrupt)
 	// Bit 3+ = Load/Store reservation LSBs.
 	uint32_t extraflags;
+
+	MINIRV32IMA_ADDITIONAL_HEADER
 };
 
 #ifndef MINIRV32_STEPPROTO
@@ -494,7 +504,9 @@ MINIRV32_STEPPROTO
 					}
 					break;
 				}
-				default: trap = (2+1); // Fault: Invalid opcode.
+				MINIRV32IMA_OTHER_OPCODES
+				default:
+					trap = (2+1); // Fault: Invalid opcode.
 			}
 
 			// If there was a trap, do NOT allow register writeback.
