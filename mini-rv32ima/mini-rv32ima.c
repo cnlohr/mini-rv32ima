@@ -402,6 +402,15 @@ static uint32_t HandleControlStore( uint32_t addy, uint32_t val )
 		printf( "%c", val );
 		fflush( stdout );
 	}
+	else if( addy == 0x11004004 ) //CLNT
+		core->timermatchh = val;
+	else if( addy == 0x11004000 ) //CLNT
+		core->timermatchl = val;
+	else if( addy == 0x11100000 ) //SYSCON (reboot, poweroff, etc.)
+	{
+		core->pc = core->pc + 4;
+		return val; // NOTE: PC will be PC of Syscon.
+	}
 	return 0;
 }
 
@@ -413,6 +422,10 @@ static uint32_t HandleControlLoad( uint32_t addy )
 		return 0x60 | IsKBHit();
 	else if( addy == 0x10000000 && IsKBHit() )
 		return ReadKBByte();
+	else if( addy == 0x1100bffc ) // https://chromitem-soc.readthedocs.io/en/latest/clint.html
+		return core->timerh;
+	else if( addy == 0x1100bff8 )
+		return core->timerl;
 	return 0;
 }
 

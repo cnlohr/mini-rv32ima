@@ -33,6 +33,14 @@
 	#define MINIRV32_RAM_IMAGE_OFFSET  0x80000000
 #endif
 
+#ifndef MINIRV32_MMIO_START
+	#define MINIRV32_MMIO_START  0x10000000
+#endif
+
+#ifndef MINIRV32_MMIO_END
+	#define MINIRV32_MMIO_END  0x12000000
+#endif
+
 #ifndef MINIRV32_POSTEXEC
 	#define MINIRV32_POSTEXEC(...);
 #endif
@@ -224,14 +232,9 @@ MINIRV32_STEPPROTO
 					if( rsval >= MINI_RV32_RAM_SIZE-3 )
 					{
 						rsval += MINIRV32_RAM_IMAGE_OFFSET;
-						if( rsval >= 0x10000000 && rsval < 0x12000000 )  // UART, CLNT
+						if( rsval >= MINIRV32_MMIO_START && rsval < MINIRV32_MMIO_END )  // UART, CLNT
 						{
-							if( rsval == 0x1100bffc ) // https://chromitem-soc.readthedocs.io/en/latest/clint.html
-								rval = CSR( timerh );
-							else if( rsval == 0x1100bff8 )
-								rval = CSR( timerl );
-							else
-								MINIRV32_HANDLE_MEM_LOAD_CONTROL( rsval, rval );
+							MINIRV32_HANDLE_MEM_LOAD_CONTROL( rsval, rval );
 						}
 						else
 						{
@@ -266,20 +269,9 @@ MINIRV32_STEPPROTO
 					if( addy >= MINI_RV32_RAM_SIZE-3 )
 					{
 						addy += MINIRV32_RAM_IMAGE_OFFSET;
-						if( addy >= 0x10000000 && addy < 0x12000000 )
+						if( addy >= MINIRV32_MMIO_START && addy < MINIRV32_MMIO_END )
 						{
-							// Should be stuff like SYSCON, 8250, CLNT
-							if( addy == 0x11004004 ) //CLNT
-								CSR( timermatchh ) = rs2;
-							else if( addy == 0x11004000 ) //CLNT
-								CSR( timermatchl ) = rs2;
-							else if( addy == 0x11100000 ) //SYSCON (reboot, poweroff, etc.)
-							{
-								SETCSR( pc, pc + 4 );
-								return rs2; // NOTE: PC will be PC of Syscon.
-							}
-							else
-								MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, rs2 );
+							MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, rs2 );
 						}
 						else
 						{
