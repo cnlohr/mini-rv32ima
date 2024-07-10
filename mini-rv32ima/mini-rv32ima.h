@@ -33,12 +33,8 @@
 	#define MINIRV32_RAM_IMAGE_OFFSET  0x80000000
 #endif
 
-#ifndef MINIRV32_MMIO_START
-	#define MINIRV32_MMIO_START  0x10000000
-#endif
-
-#ifndef MINIRV32_MMIO_END
-	#define MINIRV32_MMIO_END  0x12000000
+#ifndef MINIRV32_MMIO_RANGE
+	#define MINIRV32_MMIO_RANGE(n)  (0x10000000 <= (n) && (n) < 0x12000000)
 #endif
 
 #ifndef MINIRV32_POSTEXEC
@@ -232,7 +228,7 @@ MINIRV32_STEPPROTO
 					if( rsval >= MINI_RV32_RAM_SIZE-3 )
 					{
 						rsval += MINIRV32_RAM_IMAGE_OFFSET;
-						if( rsval >= MINIRV32_MMIO_START && rsval < MINIRV32_MMIO_END )  // UART, CLNT
+						if( MINIRV32_MMIO_RANGE( rsval ) )  // UART, CLNT
 						{
 							MINIRV32_HANDLE_MEM_LOAD_CONTROL( rsval, rval );
 						}
@@ -269,7 +265,7 @@ MINIRV32_STEPPROTO
 					if( addy >= MINI_RV32_RAM_SIZE-3 )
 					{
 						addy += MINIRV32_RAM_IMAGE_OFFSET;
-						if( addy >= MINIRV32_MMIO_START && addy < MINIRV32_MMIO_END )
+						if( MINIRV32_MMIO_RANGE( addy ) )
 						{
 							MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, rs2 );
 						}
