@@ -404,14 +404,7 @@ MINIRV32_STEPPROTO
 					else if( microop == 0x0 ) // "SYSTEM" 0b000
 					{
 						rdid = 0;
-						if( csrno == 0x105 ) //WFI (Wait for interrupts)
-						{
-							CSR( mstatus ) |= 8;    //Enable interrupts
-							CSR( extraflags ) |= 4; //Infor environment we want to go to sleep.
-							SETCSR( pc, pc + 4 );
-							return 1;
-						}
-						else if( ( ( csrno & 0xff ) == 0x02 ) )  // MRET
+						if( ( ( csrno & 0xff ) == 0x02 ) )  // MRET
 						{
 							//https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
 							//Table 7.6. MRET then in mstatus/mstatush sets MPV=0, MPP=0, MIE=MPIE, and MPIE=1. La
@@ -421,14 +414,20 @@ MINIRV32_STEPPROTO
 							SETCSR( mstatus , (( startmstatus & 0x80) >> 4) | ((startextraflags&3) << 11) | 0x80 );
 							SETCSR( extraflags, (startextraflags & ~3) | ((startmstatus >> 11) & 3) );
 							pc = CSR( mepc ) -4;
-						}
-						else
-						{
-							switch( csrno )
-							{
-							case 0: trap = ( CSR( extraflags ) & 3) ? (11+1) : (8+1); break; // ECALL; 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
-							case 1:	trap = (3+1); break; // EBREAK 3 = "Breakpoint"
-							default: trap = (2+1); break; // Illegal opcode.
+						} else {
+							switch (csrno) {
+							case 0:
+								trap = ( CSR( extraflags ) & 3) ? (11+1) : (8+1); // ECALL; 8 = "Environment call from U-mode"; 11 = "Environment call from M-mode"
+								break;
+							case 1:
+								trap = (3+1); break; // EBREAK 3 = "Breakpoint"
+							case 0x105: //WFI (Wait for interrupts)
+								CSR( mstatus ) |= 8;    //Enable interrupts
+								CSR( extraflags ) |= 4; //Infor environment we want to go to sleep.
+								SETCSR( pc, pc + 4 );
+								return 1;
+							default:
+								trap = (2+1); break; // Illegal opcode.
 							}
 						}
 					}
