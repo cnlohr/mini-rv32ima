@@ -485,8 +485,11 @@ MINIRV32_STEPPROTO
 			}
 
 			// If there was a trap, do NOT allow register writeback.
-			if( trap )
+			if( trap ) {
+				SETCSR( pc, pc );
+				MINIRV32_POSTEXEC( pc, ir, trap );
 				break;
+			}
 
 			if( rdid )
 			{
