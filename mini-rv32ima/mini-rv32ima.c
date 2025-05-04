@@ -314,7 +314,7 @@ static int ReadKBByte()
 #include <signal.h>
 #include <sys/time.h>
 
-static void CtrlC()
+static void CtrlC(int sig)
 {
 	DumpState( core, ram_image);
 	exit( 0 );
