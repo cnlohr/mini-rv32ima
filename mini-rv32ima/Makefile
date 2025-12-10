@@ -1,3 +1,5 @@
+PREFIX:=../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-
+
 all : mini-rv32ima mini-rv32ima.flt
 
 CFLAGS_TINY:=-Os
@@ -21,7 +23,7 @@ mini-rv32ima : mini-rv32ima.c mini-rv32ima.h default64mbdtc.h
 	gcc -o $@.tiny $< $(CFLAGS_TINY)
 
 mini-rv32ima.flt : mini-rv32ima.c mini-rv32ima.h
-	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-gcc -O4 -funroll-loops -s -march=rv32ima -mabi=ilp32 -fPIC $< -Wl,-elf2flt=-r -o $@
+	$(PREFIX)gcc -O4 -funroll-loops -s -march=rv32ima -mabi=ilp32 -fPIC $< -Wl,-elf2flt=-r -o $@
 
 # Deply with:  make clean all && cp mini-rv32ima.flt ../buildroot/output/target/root/ && make -C .. toolchain && make testkern
 
@@ -63,7 +65,7 @@ testdlimage : mini-rv32ima DownloadedImage
 #testsbi : mini-rv32ima
 #	./mini-rv32ima -f ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.bin
 #dumpsbi : 
-#	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.elf >fw_payload.S
+#	$(PREFIX)objdump -S ../opensbi/this_opensbi/platform/riscv_emufun/firmware/fw_payload.elf >fw_payload.S
 
 # For converting the .dtb into a .h file for embeddding.
 bintoh :
@@ -81,8 +83,8 @@ sixtyfourmb.dtb : sixtyfourmb.dts
 
 
 dumpkern :
-	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -S ../buildroot/output/build/linux-5.18/vmlinux >fw_payload.S
-	../buildroot/output/host/bin/riscv32-buildroot-linux-uclibc-objdump -t ../buildroot/output/build/linux-5.18/vmlinux >fw_payload.t
+	$(PREFIX)objdump -S ../buildroot/output/build/linux-5.18/vmlinux >fw_payload.S
+	$(PREFIX)objdump -t ../buildroot/output/build/linux-5.18/vmlinux >fw_payload.t
 
 clean :
 	rm -rf mini-rv32ima mini-rv32ima.flt
