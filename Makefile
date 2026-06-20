@@ -59,5 +59,4 @@ dtbextract : $(DTC)
 	$(DTC) -I dtb -O dts -o dtb.dts dtb.dtb
 
 tests :
-	git clone https://github.com/riscv-software-src/riscv-tests
-	./configure --prefix=
+	make -C riscv-tests-harness run

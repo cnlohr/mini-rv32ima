@@ -1,0 +1,77 @@
+# Build outputs
+buildroot/
+buildroot/output/
+buildroot/dl/
+buildroot/.config
+
+# mini-rv32ima generated artifacts
+mini-rv32ima/mini-rv32ima
+mini-rv32ima/mini-rv32ima.flt
+mini-rv32ima/mini-rv32ima.tiny
+mini-rv32ima/bintoh
+mini-rv32ima/bintoh.c
+mini-rv32ima/DownloadedImage
+mini-rv32ima/*.zip
+mini-rv32ima/*.dtb
+mini-rv32ima/*.log
+mini-rv32ima/wget-log
+mini-rv32ima/*~
+mini-rv32ima/*.o
+
+# Baremetal build outputs
+baremetal/*.elf
+baremetal/*.bin
+baremetal/*.debug.txt
+baremetal/*~
+
+# Package build outputs
+packages/**/*.o
+packages/**/*.bin
+packages/**/*.gdb
+packages/**/*.S
+packages/**/*~
+
+# Package downloads and extracted source
+packages/coremark/coremark
+packages/coremark/coremark-1.01/
+packages/coremark/v1.01.zip
+
+# hello_linux outputs
+hello_linux/hello_linux
+hello_linux/*.S
+hello_linux/pi
+hello_linux/*.gdb
+hello_linux/*~
+
+# riscv-tests harness downloads and builds (but NOT the Makefile/README)
+riscv-tests-harness/riscv-tests/
+
+# EMU / QEMU / generated state
+*.img
+*.iso
+*.dtb
+*.dts
+*.flt
+*.bin
+*.elf
+*.o
+*.map
+*.tmp
+*.log
+*.dump
+*.gdb
+
+# Editor directories and swap files
+.vscode/
+*.swp
+*~
+.DS_Store
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Misc
+tags
+*tags
